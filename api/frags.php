@@ -22,12 +22,19 @@
  */
 
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/servers.php';
 
 header('Content-Type: application/json');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
   http_response_code(405);
   echo json_encode(['error' => 'Method Not Allowed']);
+  exit;
+}
+
+if (!is_registered_server($_SERVER['REMOTE_ADDR'])) {
+  http_response_code(403);
+  echo json_encode(['error' => 'Forbidden']);
   exit;
 }
 
