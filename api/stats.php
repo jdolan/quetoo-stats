@@ -145,7 +145,6 @@ function global_leaderboard(PDO $pdo, array $get): void {
         attacker                    AS name,
         COUNT(*)                    AS frags,
         SUM(damage)                 AS damage,
-        (MAX(`time`) - MIN(`time`)) AS time_played,
         RANK() OVER (ORDER BY COUNT(*) DESC) AS rank
       FROM frags
       $kills_base
@@ -259,8 +258,7 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
 
   // Summary totals (kills exclude suicides; deaths include them)
   $stmt = $pdo->prepare("
-    SELECT COUNT(*) AS frags, SUM(damage) AS damage,
-           (MAX(`time`) - MIN(`time`)) AS time_played
+    SELECT COUNT(*) AS frags, SUM(damage) AS damage
     FROM frags $attacker_clause
   ");
   $stmt->execute($kills_params);
@@ -311,7 +309,6 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
     'frags'              => (int) $totals['frags'],
     'deaths'             => $deaths_total,
     'damage'             => (int) $totals['damage'],
-    'time_played'        => (int) $totals['time_played'],
     'nemesis'            => $nemesis,
     'kills_by_weapon'    => $kills_by_weapon,
     'kills_by_target'    => $kills_by_target,
