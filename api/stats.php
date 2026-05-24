@@ -11,7 +11,7 @@
  *   weapon  string   Filter by weapon name (e.g. "railgun")
  *   mod     int      Filter by means-of-death value
  *   level   string   Filter by map name
- *   ai      int      0 = exclude bot frags (default), 1 = include all
+ *   ai      int      0 = human attackers only, bots can be victims (default), 1 = include all
  *   limit   int      Max rows to return (default 25, max 200)
  *
  * GET /api/stats/<guid>
@@ -36,7 +36,12 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 // Common filter helpers
 // ------------------------------------------------------------------
 
-function build_filters(array $get): array {
+/**
+ * @param string $ai_side  'attacker' or 'target' — which side the ai filter applies to.
+ *                         Kill queries pass 'attacker' (human killers, bots can be victims).
+ *                         Death queries pass 'target' (human victims, bots can be killers).
+ */
+function build_filters(array $get, string $ai_side = 'target'): array {
   $where  = [];
   $params = [];
 
@@ -70,10 +75,12 @@ function build_filters(array $get): array {
     $params[':to'] = (int) strtotime($get['to'] . ' 23:59:59');
   }
 
-  // ai=0 (default): exclude frags where the attacker or target is a bot
+  // ai=0 (default): only the relevant side must be human.
+  // Kills: attacker must be human (bots can be victims).
+  // Deaths: target must be human (bots can be killers).
   $ai = isset($get['ai']) ? (int) $get['ai'] : 0;
   if ($ai === 0) {
-    $where[] = 'attacker_ai = 0 AND target_ai = 0';
+    $where[] = $ai_side . '_ai = 0';
   }
 
   return [$where, $params];
@@ -84,7 +91,7 @@ function build_filters(array $get): array {
  * Suicides are excluded from kills but still count as deaths.
  */
 function build_kill_filters(array $get): array {
-  [$where, $params] = build_filters($get);
+  [$where, $params] = build_filters($get, 'attacker');
   $where[] = 'attacker_guid != target_guid';
   return [$where, $params];
 }
