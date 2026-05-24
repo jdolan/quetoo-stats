@@ -14,8 +14,9 @@ CREATE TABLE IF NOT EXISTS frags (
   target        VARCHAR(64)      NOT NULL,
   target_guid   CHAR(36)         NOT NULL,
   weapon        VARCHAR(64)          NULL,
-  mod           INT              NOT NULL,
+  `mod`         INT              NOT NULL,
   damage        SMALLINT         NOT NULL,
+  `time`        INT UNSIGNED         NULL,
 
   PRIMARY KEY (id),
   INDEX idx_attacker_guid (attacker_guid),

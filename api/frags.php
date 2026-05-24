@@ -15,7 +15,8 @@
  *     "target_guid":   "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
  *     "weapon":        "railgun",
  *     "mod":           12,
- *     "damage":        100
+ *     "damage":        100,
+ *     "time":          1716000000
  *   },
  *   ...
  * ]
@@ -50,8 +51,8 @@ if (!is_array($frags) || empty($frags)) {
 $pdo = db_connect();
 
 $stmt = $pdo->prepare(
-  'INSERT INTO frags (level, attacker, attacker_guid, target, target_guid, weapon, mod, damage)
-   VALUES (:level, :attacker, :attacker_guid, :target, :target_guid, :weapon, :mod, :damage)'
+  'INSERT INTO frags (level, attacker, attacker_guid, target, target_guid, weapon, `mod`, damage, `time`)
+   VALUES (:level, :attacker, :attacker_guid, :target, :target_guid, :weapon, :mod, :damage, :time)'
 );
 
 $pdo->beginTransaction();
@@ -72,6 +73,7 @@ foreach ($frags as $f) {
     ':weapon'        => isset($f['weapon']) ? substr($f['weapon'], 0, 64) : null,
     ':mod'           => (int) $f['mod'],
     ':damage'        => (int) $f['damage'],
+    ':time'          => isset($f['time']) ? (int) $f['time'] : null,
   ]);
   $inserted++;
 }
