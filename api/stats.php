@@ -85,32 +85,37 @@ function global_leaderboard(PDO $pdo, array $get): void {
   [$where, $params] = build_filters($get);
   $limit = limit_param($get);
 
-  // Name filter applies only to the attacker side
-  $attacker_where  = $where;
-  $attacker_params = $params;
+  $base_clause = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
+
+  // Name filter is applied as a WHERE on the outer (ranked) subquery so that
+  // rank reflects the global position, not the filtered position.
+  $name_clause  = '';
+  $name_params  = [];
   if (!empty($get['name'])) {
-    $attacker_where[]          = 'attacker LIKE :name';
-    $attacker_params[':name']  = '%' . substr($get['name'], 0, 64) . '%';
+    $name_clause           = 'WHERE name LIKE :name';
+    $name_params[':name']  = '%' . substr($get['name'], 0, 64) . '%';
   }
 
-  $attacker_clause = $attacker_where ? ('WHERE ' . implode(' AND ', $attacker_where)) : '';
-  $base_clause     = $where          ? ('WHERE ' . implode(' AND ', $where))          : '';
-
-  // Kills, damage, time_played per attacker
+  // Compute rank via window function before name filter is applied.
   $stmt = $pdo->prepare("
-    SELECT
-      attacker_guid            AS guid,
-      attacker                 AS name,
-      COUNT(*)                 AS frags,
-      SUM(damage)              AS damage,
-      (MAX(`time`) - MIN(`time`)) AS time_played
-    FROM frags
-    $attacker_clause
-    GROUP BY attacker_guid, attacker
-    ORDER BY frags DESC
+    SELECT *
+    FROM (
+      SELECT
+        attacker_guid               AS guid,
+        attacker                    AS name,
+        COUNT(*)                    AS frags,
+        SUM(damage)                 AS damage,
+        (MAX(`time`) - MIN(`time`)) AS time_played,
+        RANK() OVER (ORDER BY COUNT(*) DESC) AS rank
+      FROM frags
+      $base_clause
+      GROUP BY attacker_guid, attacker
+    ) ranked
+    $name_clause
+    ORDER BY rank
     LIMIT $limit
   ");
-  $stmt->execute($attacker_params);
+  $stmt->execute(array_merge($params, $name_params));
   $rows = [];
   foreach ($stmt->fetchAll() as $r) {
     $rows[$r['guid']] = array_merge($r, ['deaths' => 0]);
@@ -212,7 +217,7 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
   $stmt->execute($params);
   $deaths_by_level = $stmt->fetchAll();
 
-  // Summary totals
+  // Summary totals + global rank
   $stmt = $pdo->prepare("
     SELECT COUNT(*) AS frags, SUM(damage) AS damage,
            (MAX(`time`) - MIN(`time`)) AS time_played
@@ -221,8 +226,27 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
   $stmt->execute($params);
   $totals = $stmt->fetch();
 
+  // Rank: how many players have more frags (using same base filters, no guid filter)
+  [$rank_where, $rank_params] = build_filters($get);
+  $rank_base = $rank_where ? ('WHERE ' . implode(' AND ', $rank_where)) : '';
+  $rank_stmt = $pdo->prepare("
+    SELECT ranked.rank FROM (
+      SELECT attacker_guid,
+             RANK() OVER (ORDER BY COUNT(*) DESC) AS rank
+      FROM frags
+      $rank_base
+      GROUP BY attacker_guid
+    ) ranked
+    WHERE ranked.attacker_guid = :rank_guid
+  ");
+  $rank_params[':rank_guid'] = $guid;
+  $rank_stmt->execute($rank_params);
+  $rank_row = $rank_stmt->fetch();
+  $rank = $rank_row ? (int) $rank_row['rank'] : null;
+
   echo json_encode([
     'guid'               => $guid,
+    'rank'               => $rank,
     'frags'              => (int) $totals['frags'],
     'damage'             => (int) $totals['damage'],
     'time_played'        => (int) $totals['time_played'],
