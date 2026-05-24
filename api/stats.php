@@ -277,12 +277,35 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
   $rank_row = $rank_stmt->fetch();
   $rank = $rank_row ? (int) $rank_row['rank'] : null;
 
+  // Total deaths (includes suicides)
+  $stmt = $pdo->prepare("
+    SELECT COUNT(*) AS deaths
+    FROM frags $target_clause
+  ");
+  $stmt->execute($deaths_params);
+  $deaths_total = (int) $stmt->fetchColumn();
+
+  // Nemesis: the player who has killed this player the most (suicides included)
+  $nemesis_clause = 'WHERE target_guid = :guid'
+    . ($deaths_where ? (' AND ' . implode(' AND ', $deaths_where)) : '');
+  $stmt = $pdo->prepare("
+    SELECT attacker AS name, attacker_guid AS guid, COUNT(*) AS deaths
+    FROM frags $nemesis_clause
+    GROUP BY attacker_guid, attacker
+    ORDER BY deaths DESC
+    LIMIT 1
+  ");
+  $stmt->execute($deaths_params);
+  $nemesis = $stmt->fetch() ?: null;
+
   echo json_encode([
     'guid'               => $guid,
     'rank'               => $rank,
     'frags'              => (int) $totals['frags'],
+    'deaths'             => $deaths_total,
     'damage'             => (int) $totals['damage'],
     'time_played'        => (int) $totals['time_played'],
+    'nemesis'            => $nemesis,
     'kills_by_weapon'    => $kills_by_weapon,
     'kills_by_target'    => $kills_by_target,
     'kills_by_level'     => $kills_by_level,
