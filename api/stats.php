@@ -49,10 +49,6 @@ function build_filters(array $get): array {
     $where[]          = 'level = :level';
     $params[':level'] = substr($get['level'], 0, 64);
   }
-  if (!empty($get['name'])) {
-    $where[]         = 'attacker LIKE :name';
-    $params[':name'] = '%' . substr($get['name'], 0, 64) . '%';
-  }
 
   // ai=0 (default): exclude frags where the attacker or target is a bot
   $ai = isset($get['ai']) ? (int) $get['ai'] : 0;
@@ -89,24 +85,52 @@ function global_leaderboard(PDO $pdo, array $get): void {
   [$where, $params] = build_filters($get);
   $limit = limit_param($get);
 
-  $clause = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
+  // Name filter applies only to the attacker side
+  $attacker_where  = $where;
+  $attacker_params = $params;
+  if (!empty($get['name'])) {
+    $attacker_where[]          = 'attacker LIKE :name';
+    $attacker_params[':name']  = '%' . substr($get['name'], 0, 64) . '%';
+  }
 
-  $sql = "
+  $attacker_clause = $attacker_where ? ('WHERE ' . implode(' AND ', $attacker_where)) : '';
+  $base_clause     = $where          ? ('WHERE ' . implode(' AND ', $where))          : '';
+
+  // Kills, damage, time_played per attacker
+  $stmt = $pdo->prepare("
     SELECT
-      attacker_guid AS guid,
-      attacker      AS name,
-      COUNT(*)      AS frags,
-      SUM(damage)   AS damage
+      attacker_guid            AS guid,
+      attacker                 AS name,
+      COUNT(*)                 AS frags,
+      SUM(damage)              AS damage,
+      (MAX(`time`) - MIN(`time`)) AS time_played
     FROM frags
-    $clause
+    $attacker_clause
     GROUP BY attacker_guid, attacker
     ORDER BY frags DESC
     LIMIT $limit
-  ";
+  ");
+  $stmt->execute($attacker_params);
+  $rows = [];
+  foreach ($stmt->fetchAll() as $r) {
+    $rows[$r['guid']] = array_merge($r, ['deaths' => 0]);
+  }
 
-  $stmt = $pdo->prepare($sql);
+  // Deaths per target (same base filters, no name restriction)
+  $stmt = $pdo->prepare("
+    SELECT target_guid, COUNT(*) AS deaths
+    FROM frags
+    $base_clause
+    GROUP BY target_guid
+  ");
   $stmt->execute($params);
-  echo json_encode($stmt->fetchAll());
+  foreach ($stmt->fetchAll() as $r) {
+    if (isset($rows[$r['target_guid']])) {
+      $rows[$r['target_guid']]['deaths'] = (int) $r['deaths'];
+    }
+  }
+
+  echo json_encode(array_values($rows));
 }
 
 // ------------------------------------------------------------------
@@ -190,7 +214,8 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
 
   // Summary totals
   $stmt = $pdo->prepare("
-    SELECT COUNT(*) AS frags, SUM(damage) AS damage
+    SELECT COUNT(*) AS frags, SUM(damage) AS damage,
+           (MAX(`time`) - MIN(`time`)) AS time_played
     FROM frags $attacker_clause
   ");
   $stmt->execute($params);
@@ -200,6 +225,7 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
     'guid'               => $guid,
     'frags'              => (int) $totals['frags'],
     'damage'             => (int) $totals['damage'],
+    'time_played'        => (int) $totals['time_played'],
     'kills_by_weapon'    => $kills_by_weapon,
     'kills_by_target'    => $kills_by_target,
     'kills_by_level'     => $kills_by_level,
