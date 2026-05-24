@@ -82,3 +82,12 @@ function get_registered_servers(): array {
 function is_registered_server(string $ip): bool {
   return in_array($ip, get_registered_servers(), true);
 }
+
+/**
+ * @brief Returns the display hostname for a server IP.
+ * Uses the SERVER_HOSTNAMES map from config; falls back to the IP itself.
+ */
+function server_hostname(string $ip): string {
+  $map = defined('SERVER_HOSTNAMES') ? SERVER_HOSTNAMES : [];
+  return $map[$ip] ?? $ip;
+}

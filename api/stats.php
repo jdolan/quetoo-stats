@@ -12,6 +12,7 @@
  *   mod     int      Filter by means-of-death value
  *   level   string   Filter by map name
  *   ai      int      0 = human attackers only, bots can be victims (default), 1 = include all
+ *   server  string   Filter by server hostname (e.g. "giblets.quetoo.org")
  *   limit   int      Max rows to return (default 25, max 200)
  *
  * GET /api/stats/<guid>
@@ -63,6 +64,10 @@ function build_filters(array $get, string $ai_side = 'target'): array {
   if (!empty($get['level'])) {
     $where[]          = 'level = :level';
     $params[':level'] = substr($get['level'], 0, 64);
+  }
+  if (!empty($get['server'])) {
+    $where[]           = 'server_hostname = :server';
+    $params[':server'] = substr($get['server'], 0, 255);
   }
 
   // Date range on the frag time column (YYYY-MM-DD → Unix timestamps)

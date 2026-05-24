@@ -6,10 +6,12 @@ CREATE DATABASE IF NOT EXISTS quetoo_stats CHARACTER SET utf8mb4 COLLATE utf8mb4
 USE quetoo_stats;
 
 CREATE TABLE IF NOT EXISTS frags (
-  id            BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
-  ts            TIMESTAMP        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  server_ip     VARCHAR(45)          NULL,
-  level         VARCHAR(64)      NOT NULL,
+  id              BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  ts              TIMESTAMP        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  match_id        CHAR(36)             NULL,
+  server_ip       VARCHAR(45)          NULL,
+  server_hostname VARCHAR(255)         NULL,
+  level           VARCHAR(64)      NOT NULL,
   attacker      VARCHAR(64)      NOT NULL,
   attacker_guid CHAR(64)         NOT NULL,
   attacker_ai   TINYINT(1)       NOT NULL DEFAULT 0,
@@ -22,10 +24,12 @@ CREATE TABLE IF NOT EXISTS frags (
   `time`        INT UNSIGNED         NULL,
 
   PRIMARY KEY (id),
+  INDEX idx_match_id      (match_id),
   INDEX idx_attacker_guid (attacker_guid),
   INDEX idx_target_guid   (target_guid),
   INDEX idx_level         (level),
   INDEX idx_weapon        (weapon),
   INDEX idx_server_ip     (server_ip),
+  INDEX idx_server_host   (server_hostname),
   INDEX idx_ts            (ts)
 ) ENGINE=InnoDB;
