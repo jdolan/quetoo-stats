@@ -5,6 +5,9 @@
  * Global leaderboard — counts frags grouped by player, ordered by frags desc.
  *
  * Query parameters:
+ *   match_id string   Filter to a specific match UUID (returned by POST /api/frags)
+ *   from    string   Start date (YYYY-MM-DD, inclusive)
+ *   to      string   End date   (YYYY-MM-DD, inclusive)
  *   weapon  string   Filter by weapon name (e.g. "railgun")
  *   mod     int      Filter by means-of-death value
  *   level   string   Filter by map name
@@ -37,6 +40,13 @@ function build_filters(array $get): array {
   $where  = [];
   $params = [];
 
+  if (!empty($get['match_id'])) {
+    // Validate UUID v4 format before using as a filter
+    if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $get['match_id'])) {
+      $where[]              = 'match_id = :match_id';
+      $params[':match_id']  = $get['match_id'];
+    }
+  }
   if (!empty($get['weapon'])) {
     $where[]           = 'weapon = :weapon';
     $params[':weapon'] = substr($get['weapon'], 0, 64);
@@ -48,6 +58,16 @@ function build_filters(array $get): array {
   if (!empty($get['level'])) {
     $where[]          = 'level = :level';
     $params[':level'] = substr($get['level'], 0, 64);
+  }
+
+  // Date range on the frag time column (YYYY-MM-DD → Unix timestamps)
+  if (!empty($get['from']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $get['from'])) {
+    $where[]         = '`time` >= :from';
+    $params[':from'] = (int) strtotime($get['from']);
+  }
+  if (!empty($get['to']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $get['to'])) {
+    $where[]       = '`time` <= :to';
+    $params[':to'] = (int) strtotime($get['to'] . ' 23:59:59');
   }
 
   // ai=0 (default): exclude frags where the attacker or target is a bot
