@@ -46,8 +46,12 @@ function build_filters(array $get): array {
     $params[':mod'] = (int) $get['mod'];
   }
   if (!empty($get['level'])) {
-    $where[]         = 'level = :level';
+    $where[]          = 'level = :level';
     $params[':level'] = substr($get['level'], 0, 64);
+  }
+  if (!empty($get['name'])) {
+    $where[]         = 'attacker LIKE :name';
+    $params[':name'] = '%' . substr($get['name'], 0, 64) . '%';
   }
 
   // ai=0 (default): exclude frags where the attacker or target is a bot
