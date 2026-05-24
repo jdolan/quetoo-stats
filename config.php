@@ -19,6 +19,12 @@ $db_config = [
  */
 define('STATS_SALT', 'change-me-in-config-local');
 
+/**
+ * Map of server IP -> display hostname.
+ * Define in config.local.php, e.g.:
+ *   define('SERVER_HOSTNAMES', ['1.2.3.4' => 'myserver.example.com']);
+ */
+
 if (file_exists(__DIR__ . '/config.local.php')) {
   require_once __DIR__ . '/config.local.php';
 }

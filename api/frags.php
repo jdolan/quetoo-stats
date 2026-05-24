@@ -53,9 +53,18 @@ if (!is_array($frags) || empty($frags)) {
 
 $pdo = db_connect();
 
+// Generate a UUID v4 for this batch — all frags from one POST share a match_id.
+$match_id = sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+  mt_rand(0, 0xffff), mt_rand(0, 0xffff),
+  mt_rand(0, 0xffff),
+  mt_rand(0, 0x0fff) | 0x4000,
+  mt_rand(0, 0x3fff) | 0x8000,
+  mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
+);
+
 $stmt = $pdo->prepare(
-  'INSERT INTO frags (server_ip, level, attacker, attacker_guid, attacker_ai, target, target_guid, target_ai, weapon, `mod`, damage, `time`)
-   VALUES (:server_ip, :level, :attacker, :attacker_guid, :attacker_ai, :target, :target_guid, :target_ai, :weapon, :mod, :damage, :time)'
+  'INSERT INTO frags (match_id, server_ip, server_hostname, level, attacker, attacker_guid, attacker_ai, target, target_guid, target_ai, weapon, `mod`, damage, `time`)
+   VALUES (:match_id, :server_ip, :server_hostname, :level, :attacker, :attacker_guid, :attacker_ai, :target, :target_guid, :target_ai, :weapon, :mod, :damage, :time)'
 );
 
 $pdo->beginTransaction();
@@ -69,8 +78,10 @@ foreach ($frags as $f) {
   }
 
   $stmt->execute([
-    ':server_ip'     => $server_ip,
-    ':level'         => substr($f['level'],    0, 64),
+    ':match_id'        => $match_id,
+    ':server_ip'       => $server_ip,
+    ':server_hostname' => server_hostname($server_ip),
+    ':level'           => substr($f['level'],    0, 64),
     ':attacker'      => substr($f['attacker'], 0, 64),
     ':attacker_guid' => hash_guid($f['attacker_guid']),
     ':attacker_ai'   => !empty($f['attacker_ai']) ? 1 : 0,
@@ -87,4 +98,4 @@ foreach ($frags as $f) {
 
 $pdo->commit();
 
-echo json_encode(['inserted' => $inserted]);
+echo json_encode(['inserted' => $inserted, 'match_id' => $match_id]);
