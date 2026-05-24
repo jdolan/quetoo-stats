@@ -8,11 +8,14 @@ USE quetoo_stats;
 CREATE TABLE IF NOT EXISTS frags (
   id            BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
   ts            TIMESTAMP        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  server_ip     VARCHAR(45)          NULL,
   level         VARCHAR(64)      NOT NULL,
   attacker      VARCHAR(64)      NOT NULL,
-  attacker_guid CHAR(36)         NOT NULL,
+  attacker_guid CHAR(64)         NOT NULL,
+  attacker_ai   TINYINT(1)       NOT NULL DEFAULT 0,
   target        VARCHAR(64)      NOT NULL,
-  target_guid   CHAR(36)         NOT NULL,
+  target_guid   CHAR(64)         NOT NULL,
+  target_ai     TINYINT(1)       NOT NULL DEFAULT 0,
   weapon        VARCHAR(64)          NULL,
   `mod`         INT              NOT NULL,
   damage        SMALLINT         NOT NULL,
@@ -23,5 +26,6 @@ CREATE TABLE IF NOT EXISTS frags (
   INDEX idx_target_guid   (target_guid),
   INDEX idx_level         (level),
   INDEX idx_weapon        (weapon),
+  INDEX idx_server_ip     (server_ip),
   INDEX idx_ts            (ts)
 ) ENGINE=InnoDB;

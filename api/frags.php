@@ -3,7 +3,8 @@
  * POST /api/frags
  *
  * Accepts a JSON array of frag events from a Quetoo dedicated server and
- * inserts them into the frags table.
+ * inserts them into the frags table. Raw GUIDs are hashed with a server-side
+ * HMAC-SHA256 salt before storage so they are never exposed via the API.
  *
  * Expected payload:
  * [
@@ -11,8 +12,10 @@
  *     "level":         "dm_quetoo",
  *     "attacker":      "PlayerA",
  *     "attacker_guid": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+ *     "attacker_ai":   false,
  *     "target":        "PlayerB",
  *     "target_guid":   "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+ *     "target_ai":     false,
  *     "weapon":        "railgun",
  *     "mod":           12,
  *     "damage":        100,
@@ -51,12 +54,13 @@ if (!is_array($frags) || empty($frags)) {
 $pdo = db_connect();
 
 $stmt = $pdo->prepare(
-  'INSERT INTO frags (level, attacker, attacker_guid, target, target_guid, weapon, `mod`, damage, `time`)
-   VALUES (:level, :attacker, :attacker_guid, :target, :target_guid, :weapon, :mod, :damage, :time)'
+  'INSERT INTO frags (server_ip, level, attacker, attacker_guid, attacker_ai, target, target_guid, target_ai, weapon, `mod`, damage, `time`)
+   VALUES (:server_ip, :level, :attacker, :attacker_guid, :attacker_ai, :target, :target_guid, :target_ai, :weapon, :mod, :damage, :time)'
 );
 
 $pdo->beginTransaction();
 
+$server_ip = $_SERVER['REMOTE_ADDR'] ?? null;
 $inserted = 0;
 foreach ($frags as $f) {
   if (!isset($f['level'], $f['attacker'], $f['attacker_guid'],
@@ -65,11 +69,14 @@ foreach ($frags as $f) {
   }
 
   $stmt->execute([
-    ':level'         => substr($f['level'],         0, 64),
-    ':attacker'      => substr($f['attacker'],      0, 64),
-    ':attacker_guid' => substr($f['attacker_guid'], 0, 36),
-    ':target'        => substr($f['target'],        0, 64),
-    ':target_guid'   => substr($f['target_guid'],   0, 36),
+    ':server_ip'     => $server_ip,
+    ':level'         => substr($f['level'],    0, 64),
+    ':attacker'      => substr($f['attacker'], 0, 64),
+    ':attacker_guid' => hash_guid($f['attacker_guid']),
+    ':attacker_ai'   => !empty($f['attacker_ai']) ? 1 : 0,
+    ':target'        => substr($f['target'],   0, 64),
+    ':target_guid'   => hash_guid($f['target_guid']),
+    ':target_ai'     => !empty($f['target_ai']) ? 1 : 0,
     ':weapon'        => isset($f['weapon']) ? substr($f['weapon'], 0, 64) : null,
     ':mod'           => (int) $f['mod'],
     ':damage'        => (int) $f['damage'],
