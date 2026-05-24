@@ -59,6 +59,16 @@ function build_filters(array $get): array {
   return [$where, $params];
 }
 
+/**
+ * Returns WHERE conditions appropriate for kill (attacker-side) queries.
+ * Suicides are excluded from kills but still count as deaths.
+ */
+function build_kill_filters(array $get): array {
+  [$where, $params] = build_filters($get);
+  $where[] = 'attacker_guid != target_guid';
+  return [$where, $params];
+}
+
 function limit_param(array $get): int {
   $limit = isset($get['limit']) ? (int) $get['limit'] : 25;
   return max(1, min(200, $limit));
@@ -82,10 +92,12 @@ if ($guid !== null) {
 // ------------------------------------------------------------------
 
 function global_leaderboard(PDO $pdo, array $get): void {
-  [$where, $params] = build_filters($get);
+  [$kills_where, $kills_params]   = build_kill_filters($get);
+  [$deaths_where, $deaths_params] = build_filters($get);
   $limit = limit_param($get);
 
-  $base_clause = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
+  $kills_base  = $kills_where  ? ('WHERE ' . implode(' AND ', $kills_where))  : '';
+  $deaths_base = $deaths_where ? ('WHERE ' . implode(' AND ', $deaths_where)) : '';
 
   // Name filter is applied as a WHERE on the outer (ranked) subquery so that
   // rank reflects the global position, not the filtered position.
@@ -97,6 +109,7 @@ function global_leaderboard(PDO $pdo, array $get): void {
   }
 
   // Compute rank via window function before name filter is applied.
+  // Suicides excluded from kill counts via build_kill_filters.
   $stmt = $pdo->prepare("
     SELECT *
     FROM (
@@ -108,27 +121,27 @@ function global_leaderboard(PDO $pdo, array $get): void {
         (MAX(`time`) - MIN(`time`)) AS time_played,
         RANK() OVER (ORDER BY COUNT(*) DESC) AS rank
       FROM frags
-      $base_clause
+      $kills_base
       GROUP BY attacker_guid, attacker
     ) ranked
     $name_clause
     ORDER BY rank
     LIMIT $limit
   ");
-  $stmt->execute(array_merge($params, $name_params));
+  $stmt->execute(array_merge($kills_params, $name_params));
   $rows = [];
   foreach ($stmt->fetchAll() as $r) {
     $rows[$r['guid']] = array_merge($r, ['deaths' => 0]);
   }
 
-  // Deaths per target (same base filters, no name restriction)
+  // Deaths per target — includes suicides
   $stmt = $pdo->prepare("
     SELECT target_guid, COUNT(*) AS deaths
     FROM frags
-    $base_clause
+    $deaths_base
     GROUP BY target_guid
   ");
-  $stmt->execute($params);
+  $stmt->execute($deaths_params);
   foreach ($stmt->fetchAll() as $r) {
     if (isset($rows[$r['target_guid']])) {
       $rows[$r['target_guid']]['deaths'] = (int) $r['deaths'];
@@ -143,7 +156,8 @@ function global_leaderboard(PDO $pdo, array $get): void {
 // ------------------------------------------------------------------
 
 function player_stats(PDO $pdo, string $guid, array $get): void {
-  [$where, $params] = build_filters($get);
+  [$kills_where, $kills_params]   = build_kill_filters($get);
+  [$deaths_where, $deaths_params] = build_filters($get);
   $limit = limit_param($get);
 
   // Validate: 64-char hex
@@ -153,15 +167,14 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
     return;
   }
 
-  $params[':guid'] = $guid;
+  $kills_params[':guid']  = $guid;
+  $deaths_params[':guid'] = $guid;
 
-  $attacker_clause = $where
-    ? ('WHERE attacker_guid = :guid AND ' . implode(' AND ', $where))
-    : 'WHERE attacker_guid = :guid';
+  $attacker_clause = 'WHERE attacker_guid = :guid'
+    . ($kills_where  ? (' AND ' . implode(' AND ', $kills_where))  : '');
 
-  $target_clause = $where
-    ? ('WHERE target_guid = :guid AND ' . implode(' AND ', $where))
-    : 'WHERE target_guid = :guid';
+  $target_clause   = 'WHERE target_guid = :guid'
+    . ($deaths_where ? (' AND ' . implode(' AND ', $deaths_where)) : '');
 
   // Kills by weapon
   $stmt = $pdo->prepare("
@@ -169,7 +182,7 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
     FROM frags $attacker_clause
     GROUP BY weapon ORDER BY frags DESC LIMIT $limit
   ");
-  $stmt->execute($params);
+  $stmt->execute($kills_params);
   $kills_by_weapon = $stmt->fetchAll();
 
   // Kills by target
@@ -178,25 +191,25 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
     FROM frags $attacker_clause
     GROUP BY target_guid, target ORDER BY frags DESC LIMIT $limit
   ");
-  $stmt->execute($params);
+  $stmt->execute($kills_params);
   $kills_by_target = $stmt->fetchAll();
 
-  // Deaths by weapon
+  // Deaths by weapon — includes suicides
   $stmt = $pdo->prepare("
     SELECT weapon, COUNT(*) AS deaths
     FROM frags $target_clause
     GROUP BY weapon ORDER BY deaths DESC LIMIT $limit
   ");
-  $stmt->execute($params);
+  $stmt->execute($deaths_params);
   $deaths_by_weapon = $stmt->fetchAll();
 
-  // Deaths by attacker
+  // Deaths by attacker — includes suicides (self-kills show as own name)
   $stmt = $pdo->prepare("
     SELECT attacker AS name, attacker_guid AS guid, COUNT(*) AS deaths
     FROM frags $target_clause
     GROUP BY attacker_guid, attacker ORDER BY deaths DESC LIMIT $limit
   ");
-  $stmt->execute($params);
+  $stmt->execute($deaths_params);
   $deaths_by_attacker = $stmt->fetchAll();
 
   // Kills by level
@@ -205,29 +218,29 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
     FROM frags $attacker_clause
     GROUP BY level ORDER BY frags DESC LIMIT $limit
   ");
-  $stmt->execute($params);
+  $stmt->execute($kills_params);
   $kills_by_level = $stmt->fetchAll();
 
-  // Deaths by level
+  // Deaths by level — includes suicides
   $stmt = $pdo->prepare("
     SELECT level, COUNT(*) AS deaths
     FROM frags $target_clause
     GROUP BY level ORDER BY deaths DESC LIMIT $limit
   ");
-  $stmt->execute($params);
+  $stmt->execute($deaths_params);
   $deaths_by_level = $stmt->fetchAll();
 
-  // Summary totals + global rank
+  // Summary totals (kills exclude suicides; deaths include them)
   $stmt = $pdo->prepare("
     SELECT COUNT(*) AS frags, SUM(damage) AS damage,
            (MAX(`time`) - MIN(`time`)) AS time_played
     FROM frags $attacker_clause
   ");
-  $stmt->execute($params);
+  $stmt->execute($kills_params);
   $totals = $stmt->fetch();
 
-  // Rank: how many players have more frags (using same base filters, no guid filter)
-  [$rank_where, $rank_params] = build_filters($get);
+  // Rank: consistent with leaderboard — suicides excluded from kill counts
+  [$rank_where, $rank_params] = build_kill_filters($get);
   $rank_base = $rank_where ? ('WHERE ' . implode(' AND ', $rank_where)) : '';
   $rank_stmt = $pdo->prepare("
     SELECT ranked.rank FROM (
