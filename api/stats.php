@@ -170,6 +170,24 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
   $stmt->execute($params);
   $deaths_by_attacker = $stmt->fetchAll();
 
+  // Kills by level
+  $stmt = $pdo->prepare("
+    SELECT level, COUNT(*) AS frags, SUM(damage) AS damage
+    FROM frags $attacker_clause
+    GROUP BY level ORDER BY frags DESC LIMIT $limit
+  ");
+  $stmt->execute($params);
+  $kills_by_level = $stmt->fetchAll();
+
+  // Deaths by level
+  $stmt = $pdo->prepare("
+    SELECT level, COUNT(*) AS deaths
+    FROM frags $target_clause
+    GROUP BY level ORDER BY deaths DESC LIMIT $limit
+  ");
+  $stmt->execute($params);
+  $deaths_by_level = $stmt->fetchAll();
+
   // Summary totals
   $stmt = $pdo->prepare("
     SELECT COUNT(*) AS frags, SUM(damage) AS damage
@@ -179,12 +197,14 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
   $totals = $stmt->fetch();
 
   echo json_encode([
-    'guid'              => $guid,
-    'frags'             => (int) $totals['frags'],
-    'damage'            => (int) $totals['damage'],
-    'kills_by_weapon'   => $kills_by_weapon,
-    'kills_by_target'   => $kills_by_target,
-    'deaths_by_weapon'  => $deaths_by_weapon,
-    'deaths_by_attacker'=> $deaths_by_attacker,
+    'guid'               => $guid,
+    'frags'              => (int) $totals['frags'],
+    'damage'             => (int) $totals['damage'],
+    'kills_by_weapon'    => $kills_by_weapon,
+    'kills_by_target'    => $kills_by_target,
+    'kills_by_level'     => $kills_by_level,
+    'deaths_by_weapon'   => $deaths_by_weapon,
+    'deaths_by_attacker' => $deaths_by_attacker,
+    'deaths_by_level'    => $deaths_by_level,
   ]);
 }
