@@ -1,0 +1,9 @@
+RewriteEngine On
+
+# Route /api/frags -> api/frags.php, /api/leaderboard -> api/leaderboard.php, etc.
+RewriteRule ^api/([a-z_]+)/?$ api/$1.php [L]
+
+# Block direct access to config files
+<FilesMatch "^config.*\.php$">
+  Require all denied
+</FilesMatch>
