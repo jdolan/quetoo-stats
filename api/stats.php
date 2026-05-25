@@ -106,6 +106,45 @@ function limit_param(array $get): int {
   return max(1, min(200, $limit));
 }
 
+/**
+ * Filters for the captures table. Supports level, server, date range, and
+ * match_id — but not weapon/mod/ai, which are frag-specific.
+ */
+function build_capture_filters(array $get): array {
+  $where  = [];
+  $params = [];
+
+  if (!empty($get['match_id'])) {
+    if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $get['match_id'])) {
+      $where[]             = 'match_id = :match_id';
+      $params[':match_id'] = $get['match_id'];
+    }
+  }
+  if (!empty($get['level'])) {
+    $where[]          = 'level = :level';
+    $params[':level'] = substr($get['level'], 0, 64);
+  }
+  if (!empty($get['server'])) {
+    $where[]           = 'server_hostname = :server';
+    $params[':server'] = substr($get['server'], 0, 255);
+  }
+  if (!empty($get['from']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $get['from'])) {
+    $where[]         = '`time` >= :from';
+    $params[':from'] = (int) strtotime($get['from']);
+  }
+  if (!empty($get['to']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $get['to'])) {
+    $where[]       = '`time` <= :to';
+    $params[':to'] = (int) strtotime($get['to'] . ' 23:59:59');
+  }
+
+  $ai = isset($get['ai']) ? (int) $get['ai'] : 0;
+  if ($ai === 0) {
+    $where[] = 'player_ai = 0';
+  }
+
+  return [$where, $params];
+}
+
 // ------------------------------------------------------------------
 // Routing
 // ------------------------------------------------------------------
@@ -162,7 +201,7 @@ function global_leaderboard(PDO $pdo, array $get): void {
   $stmt->execute(array_merge($kills_params, $name_params));
   $rows = [];
   foreach ($stmt->fetchAll() as $r) {
-    $rows[$r['guid']] = array_merge($r, ['deaths' => 0]);
+    $rows[$r['guid']] = array_merge($r, ['deaths' => 0, 'captures' => 0]);
   }
 
   // Deaths per target — includes suicides
@@ -176,6 +215,22 @@ function global_leaderboard(PDO $pdo, array $get): void {
   foreach ($stmt->fetchAll() as $r) {
     if (isset($rows[$r['target_guid']])) {
       $rows[$r['target_guid']]['deaths'] = (int) $r['deaths'];
+    }
+  }
+
+  // Captures per player — filtered by level, server, and date where applicable
+  [$cap_where, $cap_params] = build_capture_filters($get);
+  $cap_base = $cap_where ? ('WHERE ' . implode(' AND ', $cap_where)) : '';
+  $stmt = $pdo->prepare("
+    SELECT player_guid, COUNT(*) AS captures
+    FROM captures
+    $cap_base
+    GROUP BY player_guid
+  ");
+  $stmt->execute($cap_params);
+  foreach ($stmt->fetchAll() as $r) {
+    if (isset($rows[$r['player_guid']])) {
+      $rows[$r['player_guid']]['captures'] = (int) $r['captures'];
     }
   }
 
@@ -308,12 +363,31 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
   $stmt->execute($deaths_params);
   $nemesis = $stmt->fetch() ?: null;
 
+  // Captures — total and by level
+  [$cap_where, $cap_params] = build_capture_filters($get);
+  $cap_params[':guid'] = $guid;
+  $cap_clause = 'WHERE player_guid = :guid'
+    . ($cap_where ? (' AND ' . implode(' AND ', $cap_where)) : '');
+
+  $stmt = $pdo->prepare("SELECT COUNT(*) FROM captures $cap_clause");
+  $stmt->execute($cap_params);
+  $captures_total = (int) $stmt->fetchColumn();
+
+  $stmt = $pdo->prepare("
+    SELECT level, COUNT(*) AS captures
+    FROM captures $cap_clause
+    GROUP BY level ORDER BY captures DESC LIMIT $limit
+  ");
+  $stmt->execute($cap_params);
+  $captures_by_level = $stmt->fetchAll();
+
   echo json_encode([
     'guid'               => $guid,
     'rank'               => $rank,
     'frags'              => (int) $totals['frags'],
     'deaths'             => $deaths_total,
     'damage'             => (int) $totals['damage'],
+    'captures'           => $captures_total,
     'nemesis'            => $nemesis,
     'kills_by_weapon'    => $kills_by_weapon,
     'kills_by_target'    => $kills_by_target,
@@ -321,5 +395,6 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
     'deaths_by_weapon'   => $deaths_by_weapon,
     'deaths_by_attacker' => $deaths_by_attacker,
     'deaths_by_level'    => $deaths_by_level,
+    'captures_by_level'  => $captures_by_level,
   ]);
 }
