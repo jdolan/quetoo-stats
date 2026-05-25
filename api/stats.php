@@ -42,42 +42,49 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
  *                         Kill queries pass 'attacker' (human killers, bots can be victims).
  *                         Death queries pass 'target' (human victims, bots can be killers).
  */
-function build_filters(array $get, string $ai_side = 'target'): array {
+function build_filters(array $get, string $ai_side = 'target', string $prefix = ''): array {
   $where  = [];
   $params = [];
 
   if (!empty($get['match_id'])) {
     // Validate UUID v4 format before using as a filter
     if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $get['match_id'])) {
-      $where[]              = 'match_id = :match_id';
-      $params[':match_id']  = $get['match_id'];
+      $k = $prefix . 'match_id';
+      $where[]       = "match_id = :$k";
+      $params[":$k"] = $get['match_id'];
     }
   }
   if (!empty($get['weapon'])) {
-    $where[]           = 'weapon = :weapon';
-    $params[':weapon'] = substr($get['weapon'], 0, 64);
+    $k = $prefix . 'weapon';
+    $where[]       = "weapon = :$k";
+    $params[":$k"] = substr($get['weapon'], 0, 64);
   }
   if (isset($get['mod']) && $get['mod'] !== '') {
-    $where[]        = '`mod` = :mod';
-    $params[':mod'] = (int) $get['mod'];
+    $k = $prefix . 'mod';
+    $where[]       = "`mod` = :$k";
+    $params[":$k"] = (int) $get['mod'];
   }
   if (!empty($get['level'])) {
-    $where[]          = 'level = :level';
-    $params[':level'] = substr($get['level'], 0, 64);
+    $k = $prefix . 'level';
+    $where[]       = "level = :$k";
+    $params[":$k"] = substr($get['level'], 0, 64);
   }
   if (!empty($get['server'])) {
-    $where[]           = 'server_hostname = :server';
-    $params[':server'] = substr($get['server'], 0, 255);
+    $k = $prefix . 'server';
+    $where[]       = "server_hostname = :$k";
+    $params[":$k"] = substr($get['server'], 0, 255);
   }
 
   // Date range on the frag time column (YYYY-MM-DD → Unix timestamps)
   if (!empty($get['from']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $get['from'])) {
-    $where[]         = '`time` >= :from';
-    $params[':from'] = (int) strtotime($get['from']);
+    $k = $prefix . 'from';
+    $where[]       = "`time` >= :$k";
+    $params[":$k"] = (int) strtotime($get['from']);
   }
   if (!empty($get['to']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $get['to'])) {
-    $where[]       = '`time` <= :to';
-    $params[':to'] = (int) strtotime($get['to'] . ' 23:59:59');
+    $k = $prefix . 'to';
+    $where[]       = "`time` <= :$k";
+    $params[":$k"] = (int) strtotime($get['to'] . ' 23:59:59');
   }
 
   // ai=0 (default): only the relevant side must be human.
@@ -95,8 +102,8 @@ function build_filters(array $get, string $ai_side = 'target'): array {
  * Returns WHERE conditions appropriate for kill (attacker-side) queries.
  * Suicides are excluded from kills but still count as deaths.
  */
-function build_kill_filters(array $get): array {
-  [$where, $params] = build_filters($get, 'attacker');
+function build_kill_filters(array $get, string $prefix = ''): array {
+  [$where, $params] = build_filters($get, 'attacker', $prefix);
   $where[] = 'attacker_guid != target_guid';
   return [$where, $params];
 }
@@ -110,31 +117,36 @@ function limit_param(array $get): int {
  * Filters for the captures table. Supports level, server, date range, and
  * match_id — but not weapon/mod/ai, which are frag-specific.
  */
-function build_capture_filters(array $get): array {
+function build_capture_filters(array $get, string $prefix = ''): array {
   $where  = [];
   $params = [];
 
   if (!empty($get['match_id'])) {
     if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $get['match_id'])) {
-      $where[]             = 'match_id = :match_id';
-      $params[':match_id'] = $get['match_id'];
+      $k = $prefix . 'match_id';
+      $where[]       = "match_id = :$k";
+      $params[":$k"] = $get['match_id'];
     }
   }
   if (!empty($get['level'])) {
-    $where[]          = 'level = :level';
-    $params[':level'] = substr($get['level'], 0, 64);
+    $k = $prefix . 'level';
+    $where[]       = "level = :$k";
+    $params[":$k"] = substr($get['level'], 0, 64);
   }
   if (!empty($get['server'])) {
-    $where[]           = 'server_hostname = :server';
-    $params[':server'] = substr($get['server'], 0, 255);
+    $k = $prefix . 'server';
+    $where[]       = "server_hostname = :$k";
+    $params[":$k"] = substr($get['server'], 0, 255);
   }
   if (!empty($get['from']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $get['from'])) {
-    $where[]         = '`time` >= :from';
-    $params[':from'] = (int) strtotime($get['from']);
+    $k = $prefix . 'from';
+    $where[]       = "`time` >= :$k";
+    $params[":$k"] = (int) strtotime($get['from']);
   }
   if (!empty($get['to']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $get['to'])) {
-    $where[]       = '`time` <= :to';
-    $params[':to'] = (int) strtotime($get['to'] . ' 23:59:59');
+    $k = $prefix . 'to';
+    $where[]       = "`time` <= :$k";
+    $params[":$k"] = (int) strtotime($get['to'] . ' 23:59:59');
   }
 
   $ai = isset($get['ai']) ? (int) $get['ai'] : 0;
@@ -163,78 +175,77 @@ if ($guid !== null) {
 // ------------------------------------------------------------------
 
 function global_leaderboard(PDO $pdo, array $get): void {
-  [$kills_where, $kills_params]   = build_kill_filters($get);
-  [$deaths_where, $deaths_params] = build_filters($get);
+  [$kills_where, $kills_params]   = build_kill_filters($get, 'k_');
+  [$deaths_where, $deaths_params] = build_filters($get, 'target', 'd_');
+  [$cap_where, $cap_params]       = build_capture_filters($get, 'c_');
   $limit = limit_param($get);
 
   $kills_base  = $kills_where  ? ('WHERE ' . implode(' AND ', $kills_where))  : '';
   $deaths_base = $deaths_where ? ('WHERE ' . implode(' AND ', $deaths_where)) : '';
+  $cap_base    = $cap_where    ? ('WHERE ' . implode(' AND ', $cap_where))    : '';
 
-  // Name filter is applied as a WHERE on the outer (ranked) subquery so that
-  // rank reflects the global position, not the filtered position.
-  $name_clause  = '';
-  $name_params  = [];
+  // Name filter applied on the outer query so rank reflects global position.
+  $name_clause = '';
+  $name_params = [];
   if (!empty($get['name'])) {
     $name_clause           = 'WHERE name LIKE :name';
     $name_params[':name']  = '%' . substr($get['name'], 0, 64) . '%';
   }
 
-  // Compute rank via window function before name filter is applied.
-  // Suicides excluded from kill counts via build_kill_filters.
+  // Validate sort/dir — injected literally into SQL so must be whitelisted.
+  $valid_sorts = ['frags', 'deaths', 'kd', 'damage', 'captures', 'name'];
+  $sort = isset($get['sort']) && in_array($get['sort'], $valid_sorts, true) ? $get['sort'] : 'frags';
+  $dir  = isset($get['dir'])  && $get['dir'] === 'asc' ? 'ASC' : 'DESC';
+
+  $order_expr = match($sort) {
+    'deaths'   => "deaths $dir",
+    'kd'       => "CASE WHEN deaths = 0 THEN frags ELSE frags / deaths END $dir",
+    'damage'   => "damage $dir",
+    'captures' => "captures $dir",
+    'name'     => "name $dir",
+    default    => "frags $dir",
+  };
+
+  // Single unified query: kills LEFT JOIN deaths LEFT JOIN captures.
+  // RANK() always reflects global frags position regardless of sort order.
+  // Suicides excluded from kills via build_kill_filters; deaths include them.
   $stmt = $pdo->prepare("
     SELECT *
     FROM (
       SELECT
-        attacker_guid               AS guid,
-        attacker                    AS name,
-        COUNT(*)                    AS frags,
-        SUM(damage)                 AS damage,
-        RANK() OVER (ORDER BY COUNT(*) DESC) AS rank
-      FROM frags
-      $kills_base
-      GROUP BY attacker_guid, attacker
+        k.guid,
+        k.name,
+        k.frags,
+        k.damage,
+        COALESCE(d.deaths, 0)   AS deaths,
+        COALESCE(c.captures, 0) AS captures,
+        RANK() OVER (ORDER BY k.frags DESC) AS rank
+      FROM (
+        SELECT attacker_guid AS guid, attacker AS name,
+               COUNT(*) AS frags, SUM(damage) AS damage
+        FROM frags
+        $kills_base
+        GROUP BY attacker_guid, attacker
+      ) k
+      LEFT JOIN (
+        SELECT target_guid, COUNT(*) AS deaths
+        FROM frags
+        $deaths_base
+        GROUP BY target_guid
+      ) d ON d.target_guid = k.guid
+      LEFT JOIN (
+        SELECT player_guid, COUNT(*) AS captures
+        FROM captures
+        $cap_base
+        GROUP BY player_guid
+      ) c ON c.player_guid = k.guid
     ) ranked
     $name_clause
-    ORDER BY rank
+    ORDER BY $order_expr
     LIMIT $limit
   ");
-  $stmt->execute(array_merge($kills_params, $name_params));
-  $rows = [];
-  foreach ($stmt->fetchAll() as $r) {
-    $rows[$r['guid']] = array_merge($r, ['deaths' => 0, 'captures' => 0]);
-  }
-
-  // Deaths per target — includes suicides
-  $stmt = $pdo->prepare("
-    SELECT target_guid, COUNT(*) AS deaths
-    FROM frags
-    $deaths_base
-    GROUP BY target_guid
-  ");
-  $stmt->execute($deaths_params);
-  foreach ($stmt->fetchAll() as $r) {
-    if (isset($rows[$r['target_guid']])) {
-      $rows[$r['target_guid']]['deaths'] = (int) $r['deaths'];
-    }
-  }
-
-  // Captures per player — filtered by level, server, and date where applicable
-  [$cap_where, $cap_params] = build_capture_filters($get);
-  $cap_base = $cap_where ? ('WHERE ' . implode(' AND ', $cap_where)) : '';
-  $stmt = $pdo->prepare("
-    SELECT player_guid, COUNT(*) AS captures
-    FROM captures
-    $cap_base
-    GROUP BY player_guid
-  ");
-  $stmt->execute($cap_params);
-  foreach ($stmt->fetchAll() as $r) {
-    if (isset($rows[$r['player_guid']])) {
-      $rows[$r['player_guid']]['captures'] = (int) $r['captures'];
-    }
-  }
-
-  echo json_encode(array_values($rows));
+  $stmt->execute(array_merge($kills_params, $deaths_params, $cap_params, $name_params));
+  echo json_encode($stmt->fetchAll());
 }
 
 // ------------------------------------------------------------------
