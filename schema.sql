@@ -33,3 +33,26 @@ CREATE TABLE IF NOT EXISTS frags (
   INDEX idx_server_host   (server_hostname),
   INDEX idx_ts            (ts)
 ) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS captures (
+  id              BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  ts              TIMESTAMP        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  match_id        CHAR(36)             NULL,
+  server_ip       VARCHAR(45)          NULL,
+  server_hostname VARCHAR(255)         NULL,
+  level           VARCHAR(64)      NOT NULL,
+  player          VARCHAR(64)      NOT NULL,
+  player_guid     CHAR(64)         NOT NULL,
+  player_ai       TINYINT(1)       NOT NULL DEFAULT 0,
+  team            VARCHAR(64)          NULL,
+  `time`          INT UNSIGNED         NULL,
+
+  PRIMARY KEY (id),
+  INDEX idx_match_id      (match_id),
+  INDEX idx_player_guid   (player_guid),
+  INDEX idx_level         (level),
+  INDEX idx_team          (team),
+  INDEX idx_server_ip     (server_ip),
+  INDEX idx_server_host   (server_hostname),
+  INDEX idx_ts            (ts)
+) ENGINE=InnoDB;
