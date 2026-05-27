@@ -1,167 +1,189 @@
 <?php
 /**
- * Master server query helpers.
+ * GET /api/servers
  *
- * Queries the local Quetoo master server (UDP port 1996) for the list of
- * registered public dedicated servers, and exposes is_registered_server()
- * and server_hostname() for use by API endpoints.
+ * Returns live status for every public Quetoo server registered with the
+ * master.  The server list is cached; per-server status is fetched fresh on
+ * every request.
  *
- * Server lists and info strings are cached in /tmp to avoid hitting the
- * master and game servers on every inbound request.
+ * All status queries are fired in a single UDP burst then collected via
+ * socket_select() for up to 500 ms — no threads needed.
+ *
+ * Response:
+ * [
+ *   {
+ *     "ip":          "1.2.3.4",
+ *     "port":        1998,
+ *     "hostname":    "Quetoo.org Official - US East",
+ *     "map":         "dm_quetoo",
+ *     "num_clients": 3,
+ *     "max_clients": 16,
+ *     "players": [
+ *       { "name": "jdolan", "score": 42, "ping": 18 },
+ *       ...
+ *     ]
+ *   },
+ *   ...
+ * ]
  */
 
-define('MASTER_HOST',       'giblets.quetoo.org');
-define('MASTER_PORT',       1996);
-define('MASTER_QUERY',      "\xFF\xFF\xFF\xFFgetservers");
-define('MASTER_REPLY',      "\xFF\xFF\xFF\xFFservers ");
-define('CACHE_FILE',        '/tmp/quetoo_servers.json');
-define('INFO_CACHE_FILE',   '/tmp/quetoo_server_info.json');
-define('CACHE_TTL',         60);   // seconds — master list
-define('INFO_CACHE_TTL',    300);  // seconds — per-server info strings
+require_once __DIR__ . '/common.php';
 
-/**
- * @brief Query the master server and return an array of ['ip', 'port'] pairs.
- */
-function query_master_servers(): array {
-  $sock = @socket_create(AF_INET, SOCK_DGRAM, SOL_UDP);
-  if ($sock === false) {
-    error_log('quetoo-stats: socket_create failed: ' . socket_strerror(socket_last_error()));
-    return [];
-  }
+header('Content-Type: application/json');
 
-  socket_set_option($sock, SOL_SOCKET, SO_RCVTIMEO, ['sec' => 2, 'usec' => 0]);
-
-  if (@socket_sendto($sock, MASTER_QUERY, strlen(MASTER_QUERY), 0, MASTER_HOST, MASTER_PORT) === false) {
-    error_log('quetoo-stats: socket_sendto failed: ' . socket_strerror(socket_last_error($sock)));
-    socket_close($sock);
-    return [];
-  }
-
-  $response = '';
-  @socket_recvfrom($sock, $response, 65535, 0, $addr, $port);
-  socket_close($sock);
-
-  $header     = MASTER_REPLY;
-  $header_len = strlen($header);
-
-  if (strlen($response) < $header_len || strncmp($response, $header, $header_len) !== 0) {
-    error_log('quetoo-stats: unexpected master server response');
-    return [];
-  }
-
-  $servers = [];
-  $offset  = $header_len;
-
-  while ($offset + 6 <= strlen($response)) {
-    // 4 bytes IPv4 in network (big-endian) byte order, then 2 bytes port
-    $parts     = unpack('C4ip/nport', substr($response, $offset, 6));
-    $servers[] = [
-      'ip'   => "{$parts['ip1']}.{$parts['ip2']}.{$parts['ip3']}.{$parts['ip4']}",
-      'port' => (int) $parts['port'],
-    ];
-    $offset += 6;
-  }
-
-  return $servers;
+if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+  http_response_code(405);
+  echo json_encode(['error' => 'Method Not Allowed']);
+  exit;
 }
 
 /**
- * @brief Return the cached server list, refreshing from the master if stale.
- *        Returns an array of ['ip', 'port'] pairs.
+ * @brief Parse a raw status response UDP payload into a structured array.
+ *
+ * Quetoo responds to "status" with:
+ *   \xFF\xFF\xFF\xFFprint\n<infostring>\n<player lines>
+ * where <infostring> is \key\value\... and each player line is:
+ *   score ping "name"
  */
-function get_registered_servers(): array {
-  if (file_exists(CACHE_FILE) && (time() - filemtime(CACHE_FILE)) < CACHE_TTL) {
-    $cached = json_decode(file_get_contents(CACHE_FILE), true);
-    if (is_array($cached)) {
-      return $cached;
-    }
-  }
-
-  $servers = query_master_servers();
-  file_put_contents(CACHE_FILE, json_encode($servers), LOCK_EX);
-  return $servers;
-}
-
-/**
- * @brief Returns true if $ip is a registered public dedicated server.
- */
-function is_registered_server(string $ip): bool {
-  foreach (get_registered_servers() as $s) {
-    if ($s['ip'] === $ip) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * @brief Query a single game server for its info string.
- *        Sends the Quetoo "info" out-of-band packet and parses the response.
- *        Returns the sv_hostname string, or null on failure.
- */
-function query_server_info(string $ip, int $port): ?string {
-  $sock = @socket_create(AF_INET, SOCK_DGRAM, SOL_UDP);
-  if ($sock === false) {
-    return null;
-  }
-
-  socket_set_option($sock, SOL_SOCKET, SO_RCVTIMEO, ['sec' => 2, 'usec' => 0]);
-
-  $query = "\xFF\xFF\xFF\xFFinfo 2026";
-  if (@socket_sendto($sock, $query, strlen($query), 0, $ip, $port) === false) {
-    socket_close($sock);
-    return null;
-  }
-
-  $response = '';
-  @socket_recvfrom($sock, $response, 1024, 0, $addr, $rport);
-  socket_close($sock);
-
-  // Expected: \xFF\xFF\xFF\xFFinfo\n<hostname>\<level>\<game>\<clients>\<max>
-  $prefix = "\xFF\xFF\xFF\xFFinfo\n";
+function parse_status_response(string $response, string $fallback_ip): ?array {
+  $prefix = "\xFF\xFF\xFF\xFFprint\n";
   if (strncmp($response, $prefix, strlen($prefix)) !== 0) {
     return null;
   }
 
-  $payload  = substr($response, strlen($prefix));
-  $parts    = explode('\\', $payload);
-  $hostname = trim($parts[0]);
-  return $hostname !== '' ? $hostname : null;
-}
+  $body  = substr($response, strlen($prefix));
+  $lines = explode("\n", $body);
 
-/**
- * @brief Return the cached map of IP -> sv_hostname, refreshing if stale.
- */
-function get_server_info_map(): array {
-  if (file_exists(INFO_CACHE_FILE) && (time() - filemtime(INFO_CACHE_FILE)) < INFO_CACHE_TTL) {
-    $cached = json_decode(file_get_contents(INFO_CACHE_FILE), true);
-    if (is_array($cached)) {
-      return $cached;
+  $infostring = trim($lines[0] ?? '');
+  $parts      = explode('\\', $infostring);
+  if (isset($parts[0]) && $parts[0] === '') {
+    array_shift($parts); // strip leading '\' if present
+  }
+  $info = [];
+  for ($i = 0; $i + 1 < count($parts); $i += 2) {
+    $info[$parts[$i]] = $parts[$i + 1];
+  }
+
+  $players = [];
+  for ($i = 1; $i < count($lines); $i++) {
+    $line = trim($lines[$i]);
+    if ($line === '') {
+      continue;
+    }
+    if (preg_match('/^(-?\d+)\s+(\d+)\s+"?(.*?)"?\s*$/', $line, $m)) {
+      $players[] = [
+        'name'  => $m[3],
+        'score' => (int)$m[1],
+        'ping'  => (int)$m[2],
+      ];
     }
   }
 
-  $map = [];
-  foreach (get_registered_servers() as $s) {
-    $hostname = query_server_info($s['ip'], $s['port']);
-    if ($hostname !== null) {
-      $map[$s['ip']] = $hostname;
-    }
-  }
+  $hostname    = $info['sv_hostname']    ?? ($info['hostname']      ?? $fallback_ip);
+  $map         = $info['map_name']       ?? ($info['mapname']       ?? ($info['level'] ?? ''));
+  $gameplay    = $info['g_gameplay']     ?? '';
+  $num_clients = count($players);
+  $max_clients = (int)($info['sv_max_clients'] ?? ($info['sv_maxclients'] ?? ($info['maxclients'] ?? 0)));
 
-  file_put_contents(INFO_CACHE_FILE, json_encode($map), LOCK_EX);
-  return $map;
+  return [
+    'hostname'    => $hostname,
+    'map'         => $map,
+    'gameplay'    => $gameplay,
+    'num_clients' => $num_clients,
+    'max_clients' => $max_clients,
+    'players'     => $players,
+  ];
 }
 
 /**
- * @brief Returns the display hostname for a server IP.
- * Priority: SERVER_HOSTNAMES config override > live info query > IP fallback.
+ * @brief Fire "status" queries to every server in a single UDP burst, then
+ *        collect responses via socket_select() for up to $timeout_ms ms.
  */
-function server_hostname(string $ip): string {
-  $overrides = defined('SERVER_HOSTNAMES') ? SERVER_HOSTNAMES : [];
-  if (isset($overrides[$ip])) {
-    return $overrides[$ip];
+function query_all_server_statuses(array $servers, int $timeout_ms = 500): array {
+  if (empty($servers)) {
+    return [];
   }
 
-  $map = get_server_info_map();
-  return $map[$ip] ?? $ip;
+  $sock = @socket_create(AF_INET, SOCK_DGRAM, SOL_UDP);
+  if ($sock === false) {
+    error_log('quetoo-stats: socket_create failed for status burst');
+    return [];
+  }
+
+  socket_set_nonblock($sock);
+
+  $query = "\xFF\xFF\xFF\xFFstatus 2026";
+  foreach ($servers as $s) {
+    @socket_sendto($sock, $query, strlen($query), 0, $s['ip'], $s['port']);
+  }
+
+  $expected = [];
+  foreach ($servers as $s) {
+    $expected["{$s['ip']}:{$s['port']}"] = true;
+  }
+
+  $results  = [];
+  $deadline = microtime(true) + ($timeout_ms / 1000.0);
+
+  while (microtime(true) < $deadline) {
+    $remaining_us = (int)(($deadline - microtime(true)) * 1_000_000);
+    if ($remaining_us <= 0) {
+      break;
+    }
+
+    $read = [$sock];
+    $w = $e = null;
+    $n = @socket_select($read, $w, $e, intdiv($remaining_us, 1_000_000), $remaining_us % 1_000_000);
+    if ($n < 1) {
+      break;
+    }
+
+    $buf = '';
+    $from_ip = '';
+    $from_port = 0;
+    if (@socket_recvfrom($sock, $buf, 4096, 0, $from_ip, $from_port) < 1) {
+      continue;
+    }
+
+    $key = "{$from_ip}:{$from_port}";
+    if (!isset($expected[$key])) {
+      continue;
+    }
+
+    $status = parse_status_response($buf, $from_ip);
+    if ($status !== null) {
+      $results[$key] = $status;
+    }
+  }
+
+  socket_close($sock);
+  return $results;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Validate sort params.  Whitelist keys to prevent injection.
+$sortable = ['hostname', 'map', 'gameplay', 'num_clients', 'max_clients'];
+$sort     = in_array($_GET['sort'] ?? '', $sortable, true) ? $_GET['sort'] : 'num_clients';
+$dir      = ($_GET['dir'] ?? 'desc') === 'asc' ? 'asc' : 'desc';
+
+$registered = get_registered_servers();
+$statuses   = query_all_server_statuses($registered);
+
+$result = [];
+foreach ($registered as $s) {
+  $key = "{$s['ip']}:{$s['port']}";
+  if (!isset($statuses[$key])) {
+    continue;
+  }
+  $result[] = array_merge(['ip' => $s['ip'], 'port' => $s['port']], $statuses[$key]);
+}
+
+usort($result, function ($a, $b) use ($sort, $dir) {
+  $av = $a[$sort] ?? '';
+  $bv = $b[$sort] ?? '';
+  $cmp = is_int($av) ? ($av <=> $bv) : strcasecmp((string)$av, (string)$bv);
+  return $dir === 'asc' ? $cmp : -$cmp;
+});
+
+echo json_encode($result);

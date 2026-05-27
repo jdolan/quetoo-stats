@@ -1,0 +1,21 @@
+name: Deploy to giblets
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: giblets.quetoo.org
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          script: |
+            sudo git -C /var/www/quetoo-stats fetch origin
+            sudo git -C /var/www/quetoo-stats reset --hard origin/main
+            sudo chown -R www-data:www-data /var/www/quetoo-stats
