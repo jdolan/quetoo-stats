@@ -403,6 +403,17 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
   $stmt->execute($deaths_params);
   $nemesis = $stmt->fetch() ?: null;
 
+  // Aliases — all distinct names this GUID has played under, ordered by frags
+  $stmt = $pdo->prepare("
+    SELECT attacker AS name, COUNT(*) AS frags, MAX(ts) AS last_seen
+    FROM frags
+    WHERE attacker_guid = :alias_guid AND attacker_ai = 0
+    GROUP BY attacker
+    ORDER BY frags DESC
+  ");
+  $stmt->execute([':alias_guid' => $guid]);
+  $aliases = $stmt->fetchAll();
+
   // Captures — total and by level
   [$cap_where, $cap_params] = build_capture_filters($get);
   $cap_params[':guid'] = $guid;
@@ -429,6 +440,7 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
     'damage'             => (int) $totals['damage'],
     'captures'           => $captures_total,
     'nemesis'            => $nemesis,
+    'aliases'            => $aliases,
     'kills_by_weapon'    => $kills_by_weapon,
     'kills_by_target'    => $kills_by_target,
     'kills_by_level'     => $kills_by_level,
