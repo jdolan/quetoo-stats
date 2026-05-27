@@ -20,6 +20,13 @@ $db_config = [
 define('STATS_SALT', 'change-me-in-config-local');
 
 /**
+ * Player names suppressed from the leaderboard.
+ * Frags and captures are always stored; suppression is query-time only.
+ * Override in config.local.php if needed.
+ */
+define('LEADERBOARD_SUPPRESS_NAMES', ['newbie']);
+
+/**
  * Map of server IP -> display hostname.
  * Define in config.local.php, e.g.:
  *   define('SERVER_HOSTNAMES', ['1.2.3.4' => 'myserver.example.com']);
