@@ -26,7 +26,7 @@
  */
 
 require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/servers.php';
+require_once __DIR__ . '/common.php';
 
 header('Content-Type: application/json');
 

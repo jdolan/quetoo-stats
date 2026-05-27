@@ -2,15 +2,13 @@
 /**
  * GET /api/options
  *
- * Returns the distinct server hostnames, map names, and CTF teams present in
- * the frags and captures tables, for use in populating filter dropdowns on
- * the stats UI.
+ * Returns the distinct server hostnames and map names present in the frags
+ * table, for use in populating filter dropdowns on the stats UI.
  *
  * Response:
  * {
  *   "servers": ["giblets.quetoo.org", ...],
- *   "levels":  ["dm_quetoo", ...],
- *   "teams":   ["red", "blue", ...]
+ *   "levels":  ["dm_quetoo", ...]
  * }
  */
 
@@ -37,14 +35,4 @@ $levels = $pdo->query(
    ORDER BY level"
 )->fetchAll(PDO::FETCH_COLUMN);
 
-$teams = $pdo->query(
-  "SELECT DISTINCT team FROM captures
-   WHERE team IS NOT NULL AND team != ''
-   ORDER BY team"
-)->fetchAll(PDO::FETCH_COLUMN);
-
-echo json_encode([
-  'servers' => array_values($servers),
-  'levels'  => array_values($levels),
-  'teams'   => array_values($teams),
-]);
+echo json_encode(['servers' => array_values($servers), 'levels' => array_values($levels)]);
