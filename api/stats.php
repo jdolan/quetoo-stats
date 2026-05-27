@@ -108,6 +108,27 @@ function build_kill_filters(array $get, string $prefix = ''): array {
   return [$where, $params];
 }
 
+/**
+ * Returns a WHERE fragment and params that exclude suppressed player names
+ * from the attacker side of a frags query (e.g. attacker != 'newbie').
+ *
+ * @param string $prefix  PDO parameter prefix to avoid collisions in merged queries.
+ */
+function build_suppress_filter(string $prefix = ''): array {
+  $names = defined('LEADERBOARD_SUPPRESS_NAMES') ? LEADERBOARD_SUPPRESS_NAMES : [];
+  if (empty($names)) {
+    return [[], []];
+  }
+  $placeholders = [];
+  $params       = [];
+  foreach ($names as $i => $name) {
+    $key                 = ':' . $prefix . 'suppress_' . $i;
+    $placeholders[]      = $key;
+    $params[$key]        = $name;
+  }
+  return [['attacker NOT IN (' . implode(', ', $placeholders) . ')'], $params];
+}
+
 function limit_param(array $get): int {
   $limit = isset($get['limit']) ? (int) $get['limit'] : 25;
   return max(1, min(200, $limit));
@@ -175,7 +196,11 @@ if ($guid !== null) {
 // ------------------------------------------------------------------
 
 function global_leaderboard(PDO $pdo, array $get): void {
-  [$kills_where, $kills_params]   = build_kill_filters($get, 'k_');
+  [$kills_where, $kills_params]         = build_kill_filters($get, 'k_');
+  [$suppress_where, $suppress_params]   = build_suppress_filter('k_');
+  $kills_where  = array_merge($kills_where, $suppress_where);
+  $kills_params = array_merge($kills_params, $suppress_params);
+
   [$deaths_where, $deaths_params] = build_filters($get, 'target', 'd_');
   [$cap_where, $cap_params]       = build_capture_filters($get, 'c_');
   $limit = limit_param($get);
@@ -335,8 +360,12 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
   $stmt->execute($kills_params);
   $totals = $stmt->fetch();
 
-  // Rank: consistent with leaderboard — suicides excluded from kill counts
-  [$rank_where, $rank_params] = build_kill_filters($get);
+  // Rank: consistent with leaderboard — suicides excluded from kill counts,
+  // and suppressed names excluded so rank reflects leaderboard position.
+  [$rank_where, $rank_params]           = build_kill_filters($get);
+  [$rank_suppress_where, $rank_suppress_params] = build_suppress_filter('r_');
+  $rank_where  = array_merge($rank_where, $rank_suppress_where);
+  $rank_params = array_merge($rank_params, $rank_suppress_params);
   $rank_base = $rank_where ? ('WHERE ' . implode(' AND ', $rank_where)) : '';
   $rank_stmt = $pdo->prepare("
     SELECT ranked.rank FROM (
