@@ -5,17 +5,24 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Deployment is handled by a GitHub webhook configured to POST to
+# https://giblets.quetoo.org/deploy on push to main.
+# The webhook secret is stored as DEPLOY_SECRET in config.local.php on the server.
+# This workflow exists only to document the deploy process and can be used
+# to manually re-trigger a deploy via workflow_dispatch + the step below if needed.
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1
-        with:
-          host: giblets.quetoo.org
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_KEY }}
-          script: |
-            sudo git -C /var/www/quetoo-stats fetch origin
-            sudo git -C /var/www/quetoo-stats reset --hard origin/main
-            sudo chown -R www-data:www-data /var/www/quetoo-stats
+      - name: Trigger deploy webhook
+        run: |
+          PAYLOAD='{"ref":"refs/heads/main"}'
+          SIG="sha256=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "$DEPLOY_SECRET" | awk '{print $2}')"
+          curl -fsSL -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-Hub-Signature-256: $SIG" \
+            -d "$PAYLOAD" \
+            https://giblets.quetoo.org/deploy
+        env:
+          DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}

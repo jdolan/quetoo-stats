@@ -6,6 +6,9 @@ RewriteRule ^api/stats/([a-f0-9]{64})/?$ api/stats.php?guid=$1 [L,QSA]
 # Route /api/<name> -> api/<name>.php
 RewriteRule ^api/([a-z_]+)/?$ api/$1.php [L,QSA]
 
+# Route /deploy -> deploy.php
+RewriteRule ^deploy/?$ deploy.php [L]
+
 # Block direct access to config files
 <FilesMatch "^config.*\.php$">
   Require all denied
