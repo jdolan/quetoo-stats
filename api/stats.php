@@ -228,7 +228,7 @@ function global_leaderboard(PDO $pdo, array $get): void {
     'damage'   => "damage $dir",
     'captures' => "captures $dir",
     'name'     => "name $dir",
-    default    => "frags $dir",
+    default    => "frags $dir, damage $dir",
   };
 
   // Single unified query: kills LEFT JOIN deaths LEFT JOIN captures.
