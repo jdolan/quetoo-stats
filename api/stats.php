@@ -39,11 +39,13 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 // ------------------------------------------------------------------
 
 /**
- * @param string $ai_side  'attacker' or 'target' — which side the ai filter applies to.
- *                         Kill queries pass 'attacker' (human killers, bots can be victims).
- *                         Death queries pass 'target' (human victims, bots can be killers).
+ * @param string $ai_side           'attacker' or 'target' — which side the ai param
+ *                                  conditionally forces to human (only when ai=0).
+ *                                  Pass '' to skip the conditional filter entirely.
+ * @param string $always_human_side Side that is unconditionally required to be human,
+ *                                  regardless of the ai param. Pass '' to skip.
  */
-function build_filters(array $get, string $ai_side = 'target', string $prefix = ''): array {
+function build_filters(array $get, string $ai_side = 'target', string $prefix = '', string $always_human_side = ''): array {
   $where  = [];
   $params = [];
 
@@ -88,12 +90,14 @@ function build_filters(array $get, string $ai_side = 'target', string $prefix = 
     $params[":$k"] = (int) strtotime($get['to'] . ' 23:59:59');
   }
 
-  // ai=0 (default): only the relevant side must be human.
-  // Kills: attacker must be human (bots can be victims).
-  // Deaths: target must be human (bots can be killers).
+  // ai=0 (default): conditionally require one side to be human.
   $ai = isset($get['ai']) ? (int) $get['ai'] : 0;
-  if ($ai === 0) {
+  if ($ai === 0 && $ai_side !== '') {
     $where[] = $ai_side . '_ai = 0';
+  }
+  // Unconditionally require this side to be human, regardless of the ai param.
+  if ($always_human_side !== '') {
+    $where[] = $always_human_side . '_ai = 0';
   }
 
   return [$where, $params];
@@ -197,14 +201,15 @@ if ($guid !== null) {
 // ------------------------------------------------------------------
 
 function global_leaderboard(PDO $pdo, array $get): void {
-  // For leaderboard, filter by target (exclude kills against bots), not attacker.
-  [$kills_where, $kills_params] = build_filters($get, 'target', 'k_');
+  // Kills: attacker is always human; when ai=0 target is also human.
+  // Deaths: target is always human; when ai=0 attacker is also human.
+  [$kills_where, $kills_params] = build_filters($get, 'target', 'k_', 'attacker');
   $kills_where[] = 'attacker_guid != target_guid';  // Exclude suicides
   [$suppress_where, $suppress_params]   = build_suppress_filter('k_');
   $kills_where  = array_merge($kills_where, $suppress_where);
   $kills_params = array_merge($kills_params, $suppress_params);
 
-  [$deaths_where, $deaths_params] = build_filters($get, 'target', 'd_');
+  [$deaths_where, $deaths_params] = build_filters($get, 'attacker', 'd_', 'target');
   [$cap_where, $cap_params]       = build_capture_filters($get, 'c_');
   $limit = limit_param($get);
 
