@@ -233,6 +233,7 @@ function global_leaderboard(PDO $pdo, array $get): void {
 
   // Single unified query: kills LEFT JOIN deaths LEFT JOIN captures.
   // RANK() always reflects global frags position regardless of sort order.
+  // Tiebreaker is damage DESC so equal-frag players rarely share a rank.
   // Suicides excluded from kills via build_kill_filters; deaths include them.
   $stmt = $pdo->prepare("
     SELECT *
@@ -244,7 +245,7 @@ function global_leaderboard(PDO $pdo, array $get): void {
         k.damage,
         COALESCE(d.deaths, 0)   AS deaths,
         COALESCE(c.captures, 0) AS captures,
-        RANK() OVER (ORDER BY k.frags DESC) AS rank
+        RANK() OVER (ORDER BY k.frags DESC, k.damage DESC) AS rank
       FROM (
         SELECT attacker_guid AS guid, attacker AS name,
                COUNT(*) AS frags, SUM(damage) AS damage
@@ -370,7 +371,7 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
   $rank_stmt = $pdo->prepare("
     SELECT ranked.rank FROM (
       SELECT attacker_guid,
-             RANK() OVER (ORDER BY COUNT(*) DESC) AS rank
+             RANK() OVER (ORDER BY COUNT(*) DESC, SUM(damage) DESC) AS rank
       FROM frags
       $rank_base
       GROUP BY attacker_guid
