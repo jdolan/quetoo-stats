@@ -11,7 +11,8 @@
  *   weapon  string   Filter by weapon name (e.g. "railgun")
  *   mod     int      Filter by means-of-death value
  *   level   string   Filter by map name
- *   ai      int      0 = human attackers only, bots can be victims (default), 1 = include all
+ *   ai      int      0 = human only, exclude human-vs-bot kills (default)
+ *                    1 = include all (human-vs-bot and human-vs-human)
  *   server  string   Filter by server hostname (e.g. "giblets.quetoo.org")
  *   limit   int      Max rows to return (default 25, max 200)
  *
@@ -196,7 +197,9 @@ if ($guid !== null) {
 // ------------------------------------------------------------------
 
 function global_leaderboard(PDO $pdo, array $get): void {
-  [$kills_where, $kills_params]         = build_kill_filters($get, 'k_');
+  // For leaderboard, filter by target (exclude kills against bots), not attacker.
+  [$kills_where, $kills_params] = build_filters($get, 'target', 'k_');
+  $kills_where[] = 'attacker_guid != target_guid';  // Exclude suicides
   [$suppress_where, $suppress_params]   = build_suppress_filter('k_');
   $kills_where  = array_merge($kills_where, $suppress_where);
   $kills_params = array_merge($kills_params, $suppress_params);
