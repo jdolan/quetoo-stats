@@ -41,12 +41,13 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
  * @brief Parse a raw status response UDP payload into a structured array.
  *
  * Quetoo responds to "status" with:
- *   \xFF\xFF\xFF\xFFprint\n<infostring>\n<player lines>
- * where <infostring> is \key\value\... and each player line is:
- *   score ping "name"
+ *   \xFF\xFF\xFF\xFFstatus\n<infostring>\n<player lines>
+ * where <infostring> is \key\value\... and each player line is also \key\value\...:
+ *   \score\42\ping\18\name\jdolan\n
+ *   \score\7\ping\125\name\SkyNet\ai\1\n  (bots have \ai\1)
  */
 function parse_status_response(string $response, string $fallback_ip): ?array {
-  $prefix = "\xFF\xFF\xFF\xFFprint\n";
+  $prefix = "\xFF\xFF\xFF\xFFstatus\n";
   if (strncmp($response, $prefix, strlen($prefix)) !== 0) {
     return null;
   }
@@ -57,7 +58,7 @@ function parse_status_response(string $response, string $fallback_ip): ?array {
   $infostring = trim($lines[0] ?? '');
   $parts      = explode('\\', $infostring);
   if (isset($parts[0]) && $parts[0] === '') {
-    array_shift($parts); // strip leading '\' if present
+    array_shift($parts);
   }
   $info = [];
   for ($i = 0; $i + 1 < count($parts); $i += 2) {
@@ -65,31 +66,48 @@ function parse_status_response(string $response, string $fallback_ip): ?array {
   }
 
   $players = [];
+  $bots    = 0;
   for ($i = 1; $i < count($lines); $i++) {
     $line = trim($lines[$i]);
     if ($line === '') {
       continue;
     }
-    if (preg_match('/^(-?\d+)\s+(\d+)\s+"?(.*?)"?\s*$/', $line, $m)) {
-      $players[] = [
-        'name'  => $m[3],
-        'score' => (int)$m[1],
-        'ping'  => (int)$m[2],
-      ];
+    // Parse info-encoded player line: \score\42\ping\18\name\jdolan[\ai\1]
+    $pparts = explode('\\', $line);
+    if (isset($pparts[0]) && $pparts[0] === '') {
+      array_shift($pparts);
     }
+    $pinfo = [];
+    for ($j = 0; $j + 1 < count($pparts); $j += 2) {
+      $pinfo[$pparts[$j]] = $pparts[$j + 1];
+    }
+    if (empty($pinfo['name'])) {
+      continue;
+    }
+    $is_bot = !empty($pinfo['ai']) && (int)$pinfo['ai'] === 1;
+    if ($is_bot) {
+      $bots++;
+    }
+    $players[] = [
+      'name'  => $pinfo['name'],
+      'score' => (int)($pinfo['score'] ?? 0),
+      'ping'  => (int)($pinfo['ping']  ?? 0),
+      'ai'    => $is_bot,
+    ];
   }
 
-  $hostname    = $info['sv_hostname']    ?? ($info['hostname']      ?? $fallback_ip);
-  $map         = $info['map_name']       ?? ($info['mapname']       ?? ($info['level'] ?? ''));
+  $hostname    = $info['sv_hostname']    ?? $fallback_ip;
+  $map         = $info['sv_map']         ?? '';
   $gameplay    = $info['g_gameplay']     ?? '';
   $num_clients = count($players);
-  $max_clients = (int)($info['sv_max_clients'] ?? ($info['sv_maxclients'] ?? ($info['maxclients'] ?? 0)));
+  $max_clients = (int)($info['sv_max_clients'] ?? 0);
 
   return [
     'hostname'    => $hostname,
     'map'         => $map,
     'gameplay'    => $gameplay,
     'num_clients' => $num_clients,
+    'bots'        => $bots,
     'max_clients' => $max_clients,
     'players'     => $players,
   ];
