@@ -256,7 +256,7 @@ function global_leaderboard(PDO $pdo, array $get): void {
         RANK() OVER (ORDER BY k.frags DESC, k.damage DESC) AS rank
       FROM (
         SELECT attacker_guid AS guid, attacker AS name,
-               COUNT(*) AS frags, SUM(damage) AS damage
+               COUNT(*) AS frags, CAST(SUM(damage) AS UNSIGNED) AS damage
         FROM frags
         $kills_base
         GROUP BY attacker_guid, attacker
@@ -309,7 +309,7 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
 
   // Kills by weapon
   $stmt = $pdo->prepare("
-    SELECT weapon, COUNT(*) AS frags, SUM(damage) AS damage
+    SELECT weapon, COUNT(*) AS frags, CAST(SUM(damage) AS UNSIGNED) AS damage
     FROM frags $attacker_clause
     GROUP BY weapon ORDER BY frags DESC LIMIT $limit
   ");
@@ -318,7 +318,7 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
 
   // Kills by target
   $stmt = $pdo->prepare("
-    SELECT target AS name, target_guid AS guid, COUNT(*) AS frags, SUM(damage) AS damage
+    SELECT target AS name, target_guid AS guid, COUNT(*) AS frags, CAST(SUM(damage) AS UNSIGNED) AS damage
     FROM frags $attacker_clause
     GROUP BY target_guid, target ORDER BY frags DESC LIMIT $limit
   ");
@@ -345,7 +345,7 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
 
   // Kills by level
   $stmt = $pdo->prepare("
-    SELECT level, COUNT(*) AS frags, SUM(damage) AS damage
+    SELECT level, COUNT(*) AS frags, CAST(SUM(damage) AS UNSIGNED) AS damage
     FROM frags $attacker_clause
     GROUP BY level ORDER BY frags DESC LIMIT $limit
   ");
