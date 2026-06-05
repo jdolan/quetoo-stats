@@ -94,7 +94,7 @@ echo json_encode(['inserted' => $inserted, 'match_id' => $match_id]);
 // Derive per-player time windows from this match and insert into matches.
 $windows = $pdo->prepare(
   'SELECT level, player, player_guid, player_ai,
-          (MAX(`time`) - MIN(`time`)) DIV 1000 AS duration
+          MAX(`time`) - MIN(`time`) AS duration
    FROM captures
    WHERE match_id = ?
    GROUP BY player_guid, player, player_ai, level
