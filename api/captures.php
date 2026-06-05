@@ -90,3 +90,35 @@ try {
 }
 
 echo json_encode(['inserted' => $inserted, 'match_id' => $match_id]);
+
+// Derive per-player time windows from this match and insert into matches.
+$windows = $pdo->prepare(
+  'SELECT level, player, player_guid, player_ai,
+          MAX(`time`) - MIN(`time`) AS duration
+   FROM captures
+   WHERE match_id = ?
+   GROUP BY player_guid, player, player_ai, level
+   HAVING COUNT(*) >= 2 AND MAX(`time`) > MIN(`time`)'
+);
+$windows->execute([$match_id]);
+$rows = $windows->fetchAll(PDO::FETCH_ASSOC);
+
+if (!empty($rows)) {
+  $match_stmt = $pdo->prepare(
+    'INSERT INTO matches (match_id, server_ip, server_hostname, level, player, player_guid, player_ai, duration)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  );
+  $hostname = server_hostname($server_ip);
+  $pdo->beginTransaction();
+  try {
+    foreach ($rows as $row) {
+      $match_stmt->execute([
+        $match_id, $server_ip, $hostname,
+        $row['level'], $row['player'], $row['player_guid'], $row['player_ai'], $row['duration'],
+      ]);
+    }
+    $pdo->commit();
+  } catch (Exception $e) {
+    $pdo->rollBack();
+  }
+}

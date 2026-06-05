@@ -226,20 +226,21 @@ function global_leaderboard(PDO $pdo, array $get): void {
   }
 
   // Validate sort/dir — injected literally into SQL so must be whitelisted.
-  $valid_sorts = ['frags', 'deaths', 'kd', 'damage', 'captures', 'name'];
+  $valid_sorts = ['frags', 'deaths', 'kd', 'damage', 'captures', 'time_played', 'name'];
   $sort = isset($get['sort']) && in_array($get['sort'], $valid_sorts, true) ? $get['sort'] : 'frags';
   $dir  = isset($get['dir'])  && $get['dir'] === 'asc' ? 'ASC' : 'DESC';
 
   $order_expr = match($sort) {
-    'deaths'   => "deaths $dir",
-    'kd'       => "CASE WHEN deaths = 0 THEN frags ELSE frags / deaths END $dir",
-    'damage'   => "damage $dir",
-    'captures' => "captures $dir",
-    'name'     => "name $dir",
-    default    => "frags $dir, damage $dir",
+    'deaths'     => "deaths $dir",
+    'kd'         => "CASE WHEN deaths = 0 THEN frags ELSE frags / deaths END $dir",
+    'damage'     => "damage $dir",
+    'captures'   => "captures $dir",
+    'time_played'=> "time_played $dir",
+    'name'       => "name $dir",
+    default      => "frags $dir, damage $dir",
   };
 
-  // Single unified query: kills LEFT JOIN deaths LEFT JOIN captures.
+  // Single unified query: kills LEFT JOIN deaths LEFT JOIN captures LEFT JOIN matches.
   // RANK() always reflects global frags position regardless of sort order.
   // Tiebreaker is damage DESC so equal-frag players rarely share a rank.
   // Suicides excluded from kills via build_kill_filters; deaths include them.
@@ -251,8 +252,9 @@ function global_leaderboard(PDO $pdo, array $get): void {
         k.name,
         k.frags,
         k.damage,
-        COALESCE(d.deaths, 0)   AS deaths,
-        COALESCE(c.captures, 0) AS captures,
+        COALESCE(d.deaths, 0)      AS deaths,
+        COALESCE(c.captures, 0)    AS captures,
+        COALESCE(t.time_played, 0) AS time_played,
         RANK() OVER (ORDER BY k.frags DESC, k.damage DESC) AS rank
       FROM (
         SELECT attacker_guid AS guid, attacker AS name,
@@ -273,6 +275,12 @@ function global_leaderboard(PDO $pdo, array $get): void {
         $cap_base
         GROUP BY player_guid
       ) c ON c.player_guid = k.guid
+      LEFT JOIN (
+        SELECT player_guid, SUM(duration) AS time_played
+        FROM matches
+        WHERE player_ai = 0
+        GROUP BY player_guid
+      ) t ON t.player_guid = k.guid
     ) ranked
     $name_clause
     ORDER BY $order_expr
