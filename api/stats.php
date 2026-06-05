@@ -276,7 +276,7 @@ function global_leaderboard(PDO $pdo, array $get): void {
         GROUP BY player_guid
       ) c ON c.player_guid = k.guid
       LEFT JOIN (
-        SELECT player_guid, SUM(duration) AS time_played
+        SELECT player_guid, CAST(SUM(duration) AS UNSIGNED) AS time_played
         FROM matches
         WHERE player_ai = 0
         GROUP BY player_guid
