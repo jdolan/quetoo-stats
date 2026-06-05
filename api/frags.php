@@ -107,7 +107,7 @@ echo json_encode(['inserted' => $inserted, 'match_id' => $match_id]);
 // here is non-critical and should not roll back the frag data.
 $windows = $pdo->prepare(
   'SELECT level, player, player_guid, player_ai,
-          MAX(`time`) - MIN(`time`) AS duration
+          (MAX(`time`) - MIN(`time`)) DIV 1000 AS duration
    FROM (
      SELECT level, attacker AS player, attacker_guid AS player_guid, attacker_ai AS player_ai, `time`
      FROM frags WHERE match_id = ?
