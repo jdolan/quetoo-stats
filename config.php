@@ -36,6 +36,22 @@ if (file_exists(__DIR__ . '/config.local.php')) {
   require_once __DIR__ . '/config.local.php';
 }
 
+/**
+ * Generate a cryptographically-random UUID v4.
+ */
+function uuid4(): string {
+  $b = random_bytes(16);
+  $b[6] = chr(ord($b[6]) & 0x0f | 0x40);
+  $b[8] = chr(ord($b[8]) & 0x3f | 0x80);
+  return sprintf('%s-%s-%s-%s-%s',
+    bin2hex(substr($b, 0, 4)),
+    bin2hex(substr($b, 4, 2)),
+    bin2hex(substr($b, 6, 2)),
+    bin2hex(substr($b, 8, 2)),
+    bin2hex(substr($b, 10, 6))
+  );
+}
+
 function db_connect(): PDO {
   global $db_config;
   $dsn = sprintf('mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4',

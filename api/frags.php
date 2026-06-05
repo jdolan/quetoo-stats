@@ -54,13 +54,7 @@ if (!is_array($frags) || empty($frags)) {
 $pdo = db_connect();
 
 // Generate a UUID v4 for this batch — all frags from one POST share a match_id.
-$match_id = sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
-  mt_rand(0, 0xffff), mt_rand(0, 0xffff),
-  mt_rand(0, 0xffff),
-  mt_rand(0, 0x0fff) | 0x4000,
-  mt_rand(0, 0x3fff) | 0x8000,
-  mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
-);
+$match_id = uuid4();
 
 $stmt = $pdo->prepare(
   'INSERT INTO frags (match_id, server_ip, server_hostname, level, attacker, attacker_guid, attacker_ai, target, target_guid, target_ai, weapon, `mod`, damage, `time`)
@@ -71,31 +65,39 @@ $pdo->beginTransaction();
 
 $server_ip = $_SERVER['REMOTE_ADDR'] ?? null;
 $inserted = 0;
-foreach ($frags as $f) {
-  if (!isset($f['level'], $f['attacker'], $f['attacker_guid'],
-               $f['target'], $f['target_guid'], $f['mod'], $f['damage'])) {
-    continue;
+
+try {
+  foreach ($frags as $f) {
+    if (!isset($f['level'], $f['attacker'], $f['attacker_guid'],
+                 $f['target'], $f['target_guid'], $f['mod'], $f['damage'])) {
+      continue;
+    }
+
+    $stmt->execute([
+      ':match_id'        => $match_id,
+      ':server_ip'       => $server_ip,
+      ':server_hostname' => server_hostname($server_ip),
+      ':level'           => substr($f['level'],    0, 64),
+      ':attacker'      => substr($f['attacker'], 0, 64),
+      ':attacker_guid' => hash_guid($f['attacker_guid']),
+      ':attacker_ai'   => !empty($f['attacker_ai']) ? 1 : 0,
+      ':target'        => substr($f['target'],   0, 64),
+      ':target_guid'   => hash_guid($f['target_guid']),
+      ':target_ai'     => !empty($f['target_ai']) ? 1 : 0,
+      ':weapon'        => isset($f['weapon']) ? substr($f['weapon'], 0, 64) : null,
+      ':mod'           => (int) $f['mod'],
+      ':damage'        => (int) $f['damage'],
+      ':time'          => isset($f['time']) ? (int) $f['time'] : null,
+    ]);
+    $inserted++;
   }
 
-  $stmt->execute([
-    ':match_id'        => $match_id,
-    ':server_ip'       => $server_ip,
-    ':server_hostname' => server_hostname($server_ip),
-    ':level'           => substr($f['level'],    0, 64),
-    ':attacker'      => substr($f['attacker'], 0, 64),
-    ':attacker_guid' => hash_guid($f['attacker_guid']),
-    ':attacker_ai'   => !empty($f['attacker_ai']) ? 1 : 0,
-    ':target'        => substr($f['target'],   0, 64),
-    ':target_guid'   => hash_guid($f['target_guid']),
-    ':target_ai'     => !empty($f['target_ai']) ? 1 : 0,
-    ':weapon'        => isset($f['weapon']) ? substr($f['weapon'], 0, 64) : null,
-    ':mod'           => (int) $f['mod'],
-    ':damage'        => (int) $f['damage'],
-    ':time'          => isset($f['time']) ? (int) $f['time'] : null,
-  ]);
-  $inserted++;
+  $pdo->commit();
+} catch (Exception $e) {
+  $pdo->rollBack();
+  http_response_code(500);
+  echo json_encode(['error' => 'Internal error']);
+  exit;
 }
-
-$pdo->commit();
 
 echo json_encode(['inserted' => $inserted, 'match_id' => $match_id]);
