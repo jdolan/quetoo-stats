@@ -258,7 +258,7 @@ function global_leaderboard(PDO $pdo, array $get): void {
     default      => "frags $dir, damage $dir",
   };
 
-  // Single unified query: kills LEFT JOIN deaths LEFT JOIN captures LEFT JOIN matches.
+  // Single unified query: kills LEFT JOIN deaths LEFT JOIN captures LEFT JOIN frag-derived time.
   // RANK() always reflects global frags position regardless of sort order.
   // Tiebreaker is damage DESC so equal-frag players rarely share a rank.
   // Suicides excluded from kills via build_kill_filters; deaths include them.
@@ -297,8 +297,16 @@ function global_leaderboard(PDO $pdo, array $get): void {
       ) c ON c.player_guid = k.guid
       LEFT JOIN (
         SELECT player_guid, CAST(SUM(duration) AS SIGNED) AS time_played
-        FROM matches
-        WHERE player_ai = 0
+        FROM (
+          SELECT attacker_guid AS player_guid,
+                 MAX(`time`) - MIN(`time`) AS duration
+          FROM frags
+          WHERE match_id IS NOT NULL
+            AND `time` IS NOT NULL
+            AND attacker_ai = 0
+          GROUP BY match_id, attacker_guid, attacker, attacker_ai, level
+          HAVING COUNT(*) >= 2 AND MAX(`time`) > MIN(`time`)
+        ) frag_windows
         GROUP BY player_guid
       ) t ON t.player_guid = k.guid
     ) ranked
