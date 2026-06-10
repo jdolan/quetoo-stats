@@ -152,6 +152,27 @@ function player_names_sql(): string {
   ";
 }
 
+/**
+ * Returns a subquery that maps player GUIDs to total time played in seconds,
+ * derived from attacker-side frag windows.
+ */
+function time_played_sql(): string {
+  return "
+    SELECT player_guid, CAST(SUM(duration) AS SIGNED) AS time_played
+    FROM (
+      SELECT attacker_guid AS player_guid,
+             MAX(`time`) - MIN(`time`) AS duration
+      FROM frags
+      WHERE match_id IS NOT NULL
+        AND `time` IS NOT NULL
+        AND attacker_ai = 0
+      GROUP BY match_id, attacker_guid, attacker, attacker_ai, level
+      HAVING COUNT(*) >= 2 AND MAX(`time`) > MIN(`time`)
+    ) frag_windows
+    GROUP BY player_guid
+  ";
+}
+
 function limit_param(array $get): int {
   $limit = isset($get['limit']) ? (int) $get['limit'] : 25;
   return max(1, min(200, $limit));
@@ -293,18 +314,7 @@ function global_leaderboard(PDO $pdo, array $get): void {
         GROUP BY player_guid
       ) c ON c.player_guid = k.guid
       LEFT JOIN (
-        SELECT player_guid, CAST(SUM(duration) AS SIGNED) AS time_played
-        FROM (
-          SELECT attacker_guid AS player_guid,
-                 MAX(`time`) - MIN(`time`) AS duration
-          FROM frags
-          WHERE match_id IS NOT NULL
-            AND `time` IS NOT NULL
-            AND attacker_ai = 0
-          GROUP BY match_id, attacker_guid, attacker, attacker_ai, level
-          HAVING COUNT(*) >= 2 AND MAX(`time`) > MIN(`time`)
-        ) frag_windows
-        GROUP BY player_guid
+        " . time_played_sql() . "
       ) t ON t.player_guid = k.guid
     ) ranked
     $name_clause
@@ -416,6 +426,16 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
   $stmt->execute($kills_params);
   $totals = $stmt->fetch();
 
+  $stmt = $pdo->prepare("
+    SELECT COALESCE(t.time_played, 0) AS time_played
+    FROM (
+      " . time_played_sql() . "
+    ) t
+    WHERE t.player_guid = :guid
+  ");
+  $stmt->execute([':guid' => $guid]);
+  $time_played = (int) $stmt->fetchColumn();
+
   // Rank: consistent with leaderboard — suicides excluded from kill counts,
   // and suppressed names excluded so rank reflects leaderboard position.
   [$rank_where, $rank_params]           = build_kill_filters($get);
@@ -499,6 +519,7 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
     'rank'               => $rank,
     'frags'              => (int) $totals['frags'],
     'deaths'             => $deaths_total,
+    'time_played'        => $time_played,
     'captures'           => $captures_total,
     'nemesis'            => $nemesis,
     'aliases'            => $aliases,
