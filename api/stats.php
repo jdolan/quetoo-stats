@@ -2,7 +2,7 @@
 /**
  * GET /api/stats
  *
- * Global leaderboard — counts frags grouped by player, ordered by frags desc.
+ * Global leaderboard — counts frags grouped by player GUID, ordered by frags desc.
  *
  * Query parameters:
  *   match_id string   Filter to a specific match UUID (returned by POST /api/frags)
@@ -134,6 +134,24 @@ function build_suppress_filter(string $prefix = ''): array {
   return [['attacker NOT IN (' . implode(', ', $placeholders) . ')'], $params];
 }
 
+/**
+ * Returns a subquery that maps GUIDs to their most recently observed name.
+ */
+function player_names_sql(): string {
+  return "
+    SELECT guid,
+           SUBSTRING_INDEX(GROUP_CONCAT(name ORDER BY ts DESC, id DESC SEPARATOR 0x1F), 0x1F, 1) AS name
+    FROM (
+      SELECT attacker_guid AS guid, attacker AS name, ts, id
+      FROM frags
+      UNION ALL
+      SELECT target_guid AS guid, target AS name, ts, id
+      FROM frags
+    ) observed_names
+    GROUP BY guid
+  ";
+}
+
 function limit_param(array $get): int {
   $limit = isset($get['limit']) ? (int) $get['limit'] : 25;
   return max(1, min(200, $limit));
@@ -249,7 +267,7 @@ function global_leaderboard(PDO $pdo, array $get): void {
     FROM (
       SELECT
         k.guid,
-        k.name,
+        n.name,
         k.frags,
         k.damage,
         COALESCE(d.deaths, 0)      AS deaths,
@@ -257,12 +275,14 @@ function global_leaderboard(PDO $pdo, array $get): void {
         COALESCE(t.time_played, 0) AS time_played,
         RANK() OVER (ORDER BY k.frags DESC, k.damage DESC) AS rank
       FROM (
-        SELECT attacker_guid AS guid, attacker AS name,
-               COUNT(*) AS frags, CAST(SUM(damage) AS UNSIGNED) AS damage
+        SELECT attacker_guid AS guid, COUNT(*) AS frags, CAST(SUM(damage) AS UNSIGNED) AS damage
         FROM frags
         $kills_base
-        GROUP BY attacker_guid, attacker
+        GROUP BY attacker_guid
       ) k
+      LEFT JOIN (
+        " . player_names_sql() . "
+      ) n ON n.guid = k.guid
       LEFT JOIN (
         SELECT target_guid, COUNT(*) AS deaths
         FROM frags
@@ -326,9 +346,16 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
 
   // Kills by target
   $stmt = $pdo->prepare("
-    SELECT target AS name, target_guid AS guid, COUNT(*) AS frags, CAST(SUM(damage) AS UNSIGNED) AS damage
-    FROM frags $attacker_clause
-    GROUP BY target_guid, target ORDER BY frags DESC LIMIT $limit
+    SELECT n.name, k.guid, k.frags, k.damage
+    FROM (
+      SELECT target_guid AS guid, COUNT(*) AS frags, CAST(SUM(damage) AS UNSIGNED) AS damage
+      FROM frags $attacker_clause
+      GROUP BY target_guid
+    ) k
+    LEFT JOIN (
+      " . player_names_sql() . "
+    ) n ON n.guid = k.guid
+    ORDER BY k.frags DESC LIMIT $limit
   ");
   $stmt->execute($kills_params);
   $kills_by_target = $stmt->fetchAll();
@@ -344,9 +371,16 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
 
   // Deaths by attacker — includes suicides (self-kills show as own name)
   $stmt = $pdo->prepare("
-    SELECT attacker AS name, attacker_guid AS guid, COUNT(*) AS deaths
-    FROM frags $target_clause
-    GROUP BY attacker_guid, attacker ORDER BY deaths DESC LIMIT $limit
+    SELECT n.name, k.guid, k.deaths
+    FROM (
+      SELECT attacker_guid AS guid, COUNT(*) AS deaths
+      FROM frags $target_clause
+      GROUP BY attacker_guid
+    ) k
+    LEFT JOIN (
+      " . player_names_sql() . "
+    ) n ON n.guid = k.guid
+    ORDER BY k.deaths DESC LIMIT $limit
   ");
   $stmt->execute($deaths_params);
   $deaths_by_attacker = $stmt->fetchAll();
@@ -411,11 +445,17 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
   $nemesis_clause = 'WHERE target_guid = :guid'
     . ($deaths_where ? (' AND ' . implode(' AND ', $deaths_where)) : '');
   $stmt = $pdo->prepare("
-    SELECT attacker AS name, attacker_guid AS guid, COUNT(*) AS deaths
-    FROM frags $nemesis_clause
-    GROUP BY attacker_guid, attacker
-    ORDER BY deaths DESC
-    LIMIT 1
+    SELECT n.name, k.guid, k.deaths
+    FROM (
+      SELECT attacker_guid AS guid, COUNT(*) AS deaths
+      FROM frags $nemesis_clause
+      GROUP BY attacker_guid
+      ORDER BY deaths DESC
+      LIMIT 1
+    ) k
+    LEFT JOIN (
+      " . player_names_sql() . "
+    ) n ON n.guid = k.guid
   ");
   $stmt->execute($deaths_params);
   $nemesis = $stmt->fetch() ?: null;
