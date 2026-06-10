@@ -18,7 +18,6 @@
  *     "target_ai":     false,
  *     "weapon":        "railgun",
  *     "mod":           12,
- *     "damage":        100,
  *     "time":          1716000000
  *   },
  *   ...
@@ -58,8 +57,8 @@ $pdo = db_connect();
 $match_id = uuid4();
 
 $stmt = $pdo->prepare(
-  'INSERT INTO frags (match_id, server_ip, server_hostname, level, attacker, attacker_guid, attacker_ai, target, target_guid, target_ai, weapon, `mod`, damage, `time`)
-   VALUES (:match_id, :server_ip, :server_hostname, :level, :attacker, :attacker_guid, :attacker_ai, :target, :target_guid, :target_ai, :weapon, :mod, :damage, :time)'
+  'INSERT INTO frags (match_id, server_ip, server_hostname, level, attacker, attacker_guid, attacker_ai, target, target_guid, target_ai, weapon, `mod`, `time`)
+   VALUES (:match_id, :server_ip, :server_hostname, :level, :attacker, :attacker_guid, :attacker_ai, :target, :target_guid, :target_ai, :weapon, :mod, :time)'
 );
 
 $pdo->beginTransaction();
@@ -70,7 +69,7 @@ $inserted = 0;
 try {
   foreach ($frags as $f) {
     if (!isset($f['level'], $f['attacker'], $f['attacker_guid'],
-                 $f['target'], $f['target_guid'], $f['mod'], $f['damage'])) {
+                 $f['target'], $f['target_guid'], $f['mod'])) {
       continue;
     }
 
@@ -87,7 +86,6 @@ try {
       ':target_ai'     => !empty($f['target_ai']) ? 1 : 0,
       ':weapon'        => isset($f['weapon']) ? substr($f['weapon'], 0, 64) : null,
       ':mod'           => (int) $f['mod'],
-      ':damage'        => (int) $f['damage'],
       ':time'          => isset($f['time']) ? (int) $f['time'] : null,
     ]);
     $inserted++;

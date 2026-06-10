@@ -20,7 +20,6 @@ CREATE TABLE IF NOT EXISTS frags (
   target_ai     TINYINT(1)       NOT NULL DEFAULT 0,
   weapon        VARCHAR(64)          NULL,
   `mod`         INT              NOT NULL,
-  damage        SMALLINT         NOT NULL,
   `time`        INT UNSIGNED         NULL,
 
   PRIMARY KEY (id),
