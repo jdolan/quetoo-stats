@@ -26,7 +26,7 @@ quetoo-stats  (this repo — PHP/MariaDB REST API)
 ### Quetoo game side (../quetoo)
 
 - **Client GUID** (`src/client/cl_main.c`): the `guid` cvar (`CVAR_USER_INFO | CVAR_ARCHIVE`) is auto-initialized with a random UUID if empty, then sent to the server in the userinfo connect packet. Bots get their own GUIDs via `g_ai_info.c`.
-- **Frag capture** (`src/game/default/g_combat.c`): `G_Kill()` builds a `g_frag_t` with fields `level`, `attacker`, `attacker_guid`, `attacker_ai`, `target`, `target_guid`, `target_ai`, `weapon`, `mod`, `damage`, `time`. AI-vs-AI frags are dropped; frags with empty GUIDs are skipped.
+- **Frag capture** (`src/game/default/g_combat.c`): `G_Kill()` builds a `g_frag_t` with fields `level`, `attacker`, `attacker_guid`, `attacker_ai`, `target`, `target_guid`, `target_ai`, `weapon`, `mod`, `time`. AI-vs-AI frags are dropped; frags with empty GUIDs are skipped.
 - **CTF capture** (`src/game/default/g_item.c`): `G_PickupFlag()` builds a `g_capture_t` with fields `level`, `player`, `player_guid`, `player_ai`, `team`, `time`. Only logged when the player GUID is non-empty.
 - **HTTP POST** (`src/server/sv_game.c`): `Sv_FragLog()` / `Sv_CaptureLog()` serialize arrays as JSON and call `Net_HttpPostAsync`. Configured via `sv_stats_url` (default `.../api/frags`) and `sv_captures_url` (default `.../api/captures`); both are disabled when their URL is empty or `sv_public <= 0`.
 
@@ -93,7 +93,7 @@ Each `POST /api/frags` or `POST /api/captures` generates a UUID v4 and assigns i
 
 - **Suicides** (`attacker_guid = target_guid`) are excluded from kill/frag counts but are counted as deaths. Use `build_kill_filters()` for kill queries and `build_filters()` for death queries.
 - **AI bots** are tracked via `attacker_ai` / `target_ai` in frags and `player_ai` in captures (all TINYINT 0/1). The default filter (`ai=0`) hides bot attackers/capturers from leaderboards.
-- **Rank** is computed via `RANK() OVER (ORDER BY COUNT(*) DESC)` as a window function on the full dataset before any name filter is applied, so player rank reflects global position.
+- **Rank** is computed via `ROW_NUMBER() OVER (ORDER BY COUNT(*) DESC, attacker_guid ASC)` on the full dataset before any name filter is applied, so player rank reflects global position.
 - **Captures** are enriched onto leaderboard rows (`captures: N`, default 0 for non-CTF players) and added to player deep-stats (`captures`, `captures_by_level`). `build_capture_filters()` in `stats.php` applies level/server/date/ai filters to the captures table (weapon/mod filters do not apply to captures).
 - **String inputs** are truncated to column length (`substr($val, 0, 64)`) before binding — no ORM, raw PDO with named placeholders throughout.
 - **Server hostname resolution** priority: `SERVER_HOSTNAMES` config map → live UDP info query → IP fallback.

@@ -23,8 +23,7 @@ Accepts a JSON array of frag events from a Quetoo dedicated server.
     "target":        "PlayerB",
     "target_guid":   "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
     "weapon":        "railgun",
-    "mod":           12,
-    "damage":        100
+    "mod":           12
   }
 ]
 ```

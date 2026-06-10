@@ -244,23 +244,21 @@ function global_leaderboard(PDO $pdo, array $get): void {
   }
 
   // Validate sort/dir — injected literally into SQL so must be whitelisted.
-  $valid_sorts = ['frags', 'deaths', 'kd', 'damage', 'captures', 'time_played', 'name'];
+  $valid_sorts = ['frags', 'deaths', 'kd', 'captures', 'time_played', 'name'];
   $sort = isset($get['sort']) && in_array($get['sort'], $valid_sorts, true) ? $get['sort'] : 'frags';
   $dir  = isset($get['dir'])  && $get['dir'] === 'asc' ? 'ASC' : 'DESC';
 
   $order_expr = match($sort) {
-    'deaths'     => "deaths $dir",
-    'kd'         => "CASE WHEN deaths = 0 THEN frags ELSE frags / deaths END $dir",
-    'damage'     => "damage $dir",
-    'captures'   => "captures $dir",
-    'time_played'=> "time_played $dir",
-    'name'       => "name $dir",
-    default      => "frags $dir, damage $dir",
+    'deaths'     => "deaths $dir, guid $dir",
+    'kd'         => "CASE WHEN deaths = 0 THEN frags ELSE frags / deaths END $dir, guid $dir",
+    'captures'   => "captures $dir, guid $dir",
+    'time_played'=> "time_played $dir, guid $dir",
+    'name'       => "name $dir, guid $dir",
+    default      => "frags $dir, guid $dir",
   };
 
   // Single unified query: kills LEFT JOIN deaths LEFT JOIN captures LEFT JOIN frag-derived time.
-  // RANK() always reflects global frags position regardless of sort order.
-  // Tiebreaker is damage DESC so equal-frag players rarely share a rank.
+  // Rank is calculated from global frag position before any name filter is applied.
   // Suicides excluded from kills via build_kill_filters; deaths include them.
   $stmt = $pdo->prepare("
     SELECT *
@@ -269,13 +267,12 @@ function global_leaderboard(PDO $pdo, array $get): void {
         k.guid,
         n.name,
         k.frags,
-        k.damage,
         COALESCE(d.deaths, 0)      AS deaths,
         COALESCE(c.captures, 0)    AS captures,
         COALESCE(t.time_played, 0) AS time_played,
-        RANK() OVER (ORDER BY k.frags DESC, k.damage DESC) AS rank
+        ROW_NUMBER() OVER (ORDER BY k.frags DESC, k.guid ASC) AS rank
       FROM (
-        SELECT attacker_guid AS guid, COUNT(*) AS frags, CAST(SUM(damage) AS UNSIGNED) AS damage
+        SELECT attacker_guid AS guid, COUNT(*) AS frags
         FROM frags
         $kills_base
         GROUP BY attacker_guid
@@ -345,7 +342,7 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
 
   // Kills by weapon
   $stmt = $pdo->prepare("
-    SELECT weapon, COUNT(*) AS frags, CAST(SUM(damage) AS UNSIGNED) AS damage
+    SELECT weapon, COUNT(*) AS frags
     FROM frags $attacker_clause
     GROUP BY weapon ORDER BY frags DESC LIMIT $limit
   ");
@@ -354,9 +351,9 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
 
   // Kills by target
   $stmt = $pdo->prepare("
-    SELECT n.name, k.guid, k.frags, k.damage
+    SELECT n.name, k.guid, k.frags
     FROM (
-      SELECT target_guid AS guid, COUNT(*) AS frags, CAST(SUM(damage) AS UNSIGNED) AS damage
+      SELECT target_guid AS guid, COUNT(*) AS frags
       FROM frags $attacker_clause
       GROUP BY target_guid
     ) k
@@ -395,7 +392,7 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
 
   // Kills by level
   $stmt = $pdo->prepare("
-    SELECT level, COUNT(*) AS frags, CAST(SUM(damage) AS UNSIGNED) AS damage
+    SELECT level, COUNT(*) AS frags
     FROM frags $attacker_clause
     GROUP BY level ORDER BY frags DESC LIMIT $limit
   ");
@@ -413,7 +410,7 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
 
   // Summary totals (kills exclude suicides; deaths include them)
   $stmt = $pdo->prepare("
-    SELECT COUNT(*) AS frags, SUM(damage) AS damage
+    SELECT COUNT(*) AS frags
     FROM frags $attacker_clause
   ");
   $stmt->execute($kills_params);
@@ -428,13 +425,13 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
   $rank_base = $rank_where ? ('WHERE ' . implode(' AND ', $rank_where)) : '';
   $rank_stmt = $pdo->prepare("
     SELECT ranked.rank FROM (
-      SELECT attacker_guid,
-             RANK() OVER (ORDER BY COUNT(*) DESC, SUM(damage) DESC) AS rank
+      SELECT attacker_guid AS guid,
+             ROW_NUMBER() OVER (ORDER BY COUNT(*) DESC, attacker_guid ASC) AS rank
       FROM frags
       $rank_base
       GROUP BY attacker_guid
     ) ranked
-    WHERE ranked.attacker_guid = :rank_guid
+    WHERE ranked.guid = :rank_guid
   ");
   $rank_params[':rank_guid'] = $guid;
   $rank_stmt->execute($rank_params);
@@ -502,7 +499,6 @@ function player_stats(PDO $pdo, string $guid, array $get): void {
     'rank'               => $rank,
     'frags'              => (int) $totals['frags'],
     'deaths'             => $deaths_total,
-    'damage'             => (int) $totals['damage'],
     'captures'           => $captures_total,
     'nemesis'            => $nemesis,
     'aliases'            => $aliases,
