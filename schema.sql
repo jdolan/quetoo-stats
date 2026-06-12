@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS frags (
   INDEX idx_weapon        (weapon),
   INDEX idx_server_ip     (server_ip),
   INDEX idx_server_host   (server_hostname),
-  INDEX idx_ts            (ts)
+  INDEX idx_ts            (ts),
+  INDEX idx_time          (`time`)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS captures (
@@ -51,7 +52,8 @@ CREATE TABLE IF NOT EXISTS captures (
   INDEX idx_player_guid (player_guid),
   INDEX idx_level       (level),
   INDEX idx_server_ip   (server_ip),
-  INDEX idx_ts          (ts)
+  INDEX idx_ts          (ts),
+  INDEX idx_time        (`time`)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS matches (
