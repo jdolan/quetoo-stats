@@ -70,13 +70,15 @@ function hash_guid(string $guid): string {
 }
 
 /**
- * Fills in a default date window of the current calendar month when `from`
- * and/or `to` are absent in a query parameter array. Callers that want
- * all-time data should pass explicit values.
+ * Fills in a default date window of the current calendar week (Sunday–today)
+ * when `from` and/or `to` are absent in a query parameter array. This mirrors
+ * the website's default "This Week" selection. Callers that want a different
+ * window should pass explicit values.
  */
 function apply_default_date_window(array $get): array {
   if (empty($get['from'])) {
-    $get['from'] = date('Y-m-01');
+    // Sunday of the current week, matching JS: d.setDate(d.getDate() - d.getDay())
+    $get['from'] = date('Y-m-d', strtotime('-' . date('w') . ' days'));
   }
   if (empty($get['to'])) {
     $get['to'] = date('Y-m-d');
