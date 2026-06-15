@@ -68,3 +68,18 @@ function db_connect(): PDO {
 function hash_guid(string $guid): string {
   return hash_hmac('sha256', $guid, STATS_SALT);
 }
+
+/**
+ * Fills in a default date window of the current calendar month when `from`
+ * and/or `to` are absent in a query parameter array. Callers that want
+ * all-time data should pass explicit values.
+ */
+function apply_default_date_window(array $get): array {
+  if (empty($get['from'])) {
+    $get['from'] = date('Y-m-01');
+  }
+  if (empty($get['to'])) {
+    $get['to'] = date('Y-m-d');
+  }
+  return $get;
+}

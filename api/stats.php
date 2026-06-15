@@ -46,6 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
  *                                  regardless of the ai param. Pass '' to skip.
  */
 function build_filters(array $get, string $ai_side = 'target', string $prefix = '', string $always_human_side = ''): array {
+  $get    = apply_default_date_window($get);
   $where  = [];
   $params = [];
 
@@ -183,6 +184,7 @@ function limit_param(array $get): int {
  * match_id — but not weapon/mod/ai, which are frag-specific.
  */
 function build_capture_filters(array $get, string $prefix = ''): array {
+  $get    = apply_default_date_window($get);
   $where  = [];
   $params = [];
 
