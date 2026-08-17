@@ -95,7 +95,7 @@ function is_registered_server(string $ip): bool {
 
 /**
  * @brief Query a single game server for its info string.
- *        Sends the Quetoo "info" OOB packet and parses the response.
+ *        Sends the Quetoo "status" OOB packet and parses the response.
  *        Returns the sv_hostname string, or null on failure.
  */
 function query_server_info(string $ip, int $port): ?string {
@@ -106,25 +106,40 @@ function query_server_info(string $ip, int $port): ?string {
 
   socket_set_option($sock, SOL_SOCKET, SO_RCVTIMEO, ['sec' => 2, 'usec' => 0]);
 
-  $query = "\xFF\xFF\xFF\xFFinfo 2026";
+  $query = "\xFF\xFF\xFF\xFFstatus\n";
   if (@socket_sendto($sock, $query, strlen($query), 0, $ip, $port) === false) {
     socket_close($sock);
     return null;
   }
 
   $response = '';
-  @socket_recvfrom($sock, $response, 1024, 0, $addr, $rport);
+  @socket_recvfrom($sock, $response, 65535, 0, $addr, $rport);
   socket_close($sock);
 
-  $prefix = "\xFF\xFF\xFF\xFFinfo\n";
+  $prefix = "\xFF\xFF\xFF\xFFstatus\n";
   if (strncmp($response, $prefix, strlen($prefix)) !== 0) {
     return null;
   }
 
-  $payload  = substr($response, strlen($prefix));
-  $parts    = explode('\\', $payload);
-  $hostname = trim($parts[0]);
-  return $hostname !== '' ? $hostname : null;
+  $body       = substr($response, strlen($prefix));
+  $newline    = strpos($body, "\n");
+  if ($newline === false) {
+    return null;
+  }
+
+  $parts = explode('\\', substr($body, 0, $newline));
+  if (isset($parts[0]) && $parts[0] === '') {
+    array_shift($parts);
+  }
+
+  for ($i = 0; $i + 1 < count($parts); $i += 2) {
+    if ($parts[$i] === 'sv_hostname') {
+      $hostname = trim($parts[$i + 1]);
+      return $hostname !== '' ? $hostname : null;
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -152,7 +167,7 @@ function get_server_info_map(): array {
 
 /**
  * @brief Returns the display hostname for a server IP.
- * Priority: SERVER_HOSTNAMES config override > live info query > IP fallback.
+ * Priority: SERVER_HOSTNAMES config override > live status query > IP fallback.
  */
 function server_hostname(string $ip): string {
   $overrides = defined('SERVER_HOSTNAMES') ? SERVER_HOSTNAMES : [];

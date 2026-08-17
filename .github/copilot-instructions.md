@@ -96,5 +96,5 @@ Each `POST /api/frags` or `POST /api/captures` generates a UUID v4 and assigns i
 - **Rank** is computed via `ROW_NUMBER() OVER (ORDER BY COUNT(*) DESC, attacker_guid ASC)` on the full dataset before any name filter is applied, so player rank reflects global position.
 - **Captures** are enriched onto leaderboard rows (`captures: N`, default 0 for non-CTF players) and added to player deep-stats (`captures`, `captures_by_level`). `build_capture_filters()` in `stats.php` applies level/server/date/ai filters to the captures table (weapon/mod filters do not apply to captures).
 - **String inputs** are truncated to column length (`substr($val, 0, 64)`) before binding — no ORM, raw PDO with named placeholders throughout.
-- **Server hostname resolution** priority: `SERVER_HOSTNAMES` config map → live UDP info query → IP fallback.
+- **Server hostname resolution** priority: `SERVER_HOSTNAMES` config map → live UDP status query → IP fallback.
 - All responses are `Content-Type: application/json`; HTTP status codes are set explicitly before `exit`.
