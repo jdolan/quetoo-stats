@@ -55,6 +55,10 @@ function parse_status_response(string $response, string $fallback_ip): ?array {
   $body  = substr($response, strlen($prefix));
   $lines = explode("\n", $body);
 
+  if (substr($body, -1) !== "\n") {
+    array_pop($lines);
+  }
+
   $infostring = trim($lines[0] ?? '');
   $parts      = explode('\\', $infostring);
   if (isset($parts[0]) && $parts[0] === '') {
@@ -159,7 +163,7 @@ function query_all_server_statuses(array $servers, int $timeout_ms = 500): array
     $buf = '';
     $from_ip = '';
     $from_port = 0;
-    if (@socket_recvfrom($sock, $buf, 4096, 0, $from_ip, $from_port) < 1) {
+    if (@socket_recvfrom($sock, $buf, 65535, 0, $from_ip, $from_port) < 1) {
       continue;
     }
 
