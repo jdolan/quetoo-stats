@@ -75,3 +75,20 @@ CREATE TABLE IF NOT EXISTS matches (
   INDEX idx_server_ip   (server_ip),
   INDEX idx_ts          (ts)
 ) ENGINE=InnoDB;
+
+-- Audit trail for GUID merges performed via maintenance/merge_guid.php, e.g.
+-- when a player loses their quetoo.cfg and their prior stats need to be
+-- folded onto their new client-generated GUID.
+CREATE TABLE IF NOT EXISTS guid_merges (
+  id           BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  ts           TIMESTAMP        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  old_guid     CHAR(64)         NOT NULL,
+  new_guid     CHAR(64)         NOT NULL,
+  rows_updated INT UNSIGNED     NOT NULL,
+  note         VARCHAR(255)         NULL,
+
+  PRIMARY KEY (id),
+  INDEX idx_old_guid (old_guid),
+  INDEX idx_new_guid (new_guid),
+  INDEX idx_ts        (ts)
+) ENGINE=InnoDB;
