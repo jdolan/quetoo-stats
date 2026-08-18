@@ -52,13 +52,15 @@ $pdo = db_connect();
 $match_id = uuid4();
 
 $stmt = $pdo->prepare(
-  'INSERT INTO captures (match_id, server_ip, server_hostname, level, player, player_guid, player_ai, team, `time`)
-   VALUES (:match_id, :server_ip, :server_hostname, :level, :player, :player_guid, :player_ai, :team, :time)'
+  'INSERT INTO captures (match_id, server_ip, server_port, server_hostname, level, player, player_guid, player_ai, team, `time`)
+   VALUES (:match_id, :server_ip, :server_port, :server_hostname, :level, :player, :player_guid, :player_ai, :team, :time)'
 );
 
 $pdo->beginTransaction();
 
 $server_ip = $_SERVER['REMOTE_ADDR'] ?? null;
+$server_port = reported_port();
+$server_hostname = server_hostname($server_ip, reported_hostname());
 $inserted  = 0;
 
 try {
@@ -70,7 +72,8 @@ try {
     $stmt->execute([
       ':match_id'        => $match_id,
       ':server_ip'       => $server_ip,
-      ':server_hostname' => server_hostname($server_ip),
+      ':server_port'     => $server_port,
+      ':server_hostname' => $server_hostname,
       ':level'           => substr($c['level'],       0, 64),
       ':player'          => substr($c['player'],      0, 64),
       ':player_guid'     => hash_guid($c['player_guid']),

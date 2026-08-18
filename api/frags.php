@@ -57,13 +57,15 @@ $pdo = db_connect();
 $match_id = uuid4();
 
 $stmt = $pdo->prepare(
-  'INSERT INTO frags (match_id, server_ip, server_hostname, level, attacker, attacker_guid, attacker_ai, target, target_guid, target_ai, weapon, `mod`, `time`)
-   VALUES (:match_id, :server_ip, :server_hostname, :level, :attacker, :attacker_guid, :attacker_ai, :target, :target_guid, :target_ai, :weapon, :mod, :time)'
+  'INSERT INTO frags (match_id, server_ip, server_port, server_hostname, level, attacker, attacker_guid, attacker_ai, target, target_guid, target_ai, weapon, `mod`, `time`)
+   VALUES (:match_id, :server_ip, :server_port, :server_hostname, :level, :attacker, :attacker_guid, :attacker_ai, :target, :target_guid, :target_ai, :weapon, :mod, :time)'
 );
 
 $pdo->beginTransaction();
 
 $server_ip = $_SERVER['REMOTE_ADDR'] ?? null;
+$server_port = reported_port();
+$server_hostname = server_hostname($server_ip, reported_hostname());
 $inserted = 0;
 
 try {
@@ -76,7 +78,8 @@ try {
     $stmt->execute([
       ':match_id'        => $match_id,
       ':server_ip'       => $server_ip,
-      ':server_hostname' => server_hostname($server_ip),
+      ':server_port'     => $server_port,
+      ':server_hostname' => $server_hostname,
       ':level'           => substr($f['level'],    0, 64),
       ':attacker'      => substr($f['attacker'], 0, 64),
       ':attacker_guid' => hash_guid($f['attacker_guid']),
@@ -117,15 +120,14 @@ $rows = $windows->fetchAll(PDO::FETCH_ASSOC);
 
 if (!empty($rows)) {
   $match_stmt = $pdo->prepare(
-    'INSERT INTO matches (match_id, server_ip, server_hostname, level, player, player_guid, player_ai, duration)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO matches (match_id, server_ip, server_port, server_hostname, level, player, player_guid, player_ai, duration)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
   );
-  $hostname = server_hostname($server_ip);
   $pdo->beginTransaction();
   try {
     foreach ($rows as $row) {
       $match_stmt->execute([
-        $match_id, $server_ip, $hostname,
+        $match_id, $server_ip, $server_port, $server_hostname,
         $row['level'], $row['player'], $row['player_guid'], $row['player_ai'], $row['duration'],
       ]);
     }

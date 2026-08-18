@@ -28,6 +28,21 @@ Accepts a JSON array of frag events from a Quetoo dedicated server.
 ]
 ```
 
+Newer Quetoo dedicated servers also send two headers alongside this (and the
+`/api/captures`) request, identifying which server instance is reporting:
+
+```
+X-Quetoo-Port: 1998
+X-Quetoo-Hostname: My Cool Server
+```
+
+This lets the stats service unambiguously attribute rows to a specific
+server instance (`server_port`/`server_hostname` columns) even when several
+instances share one public IP on different ports — something `server_ip`
+alone cannot express. Older clients that omit these headers still work; the
+service falls back to a live UDP status query keyed by IP alone, which is
+only reliable when a given IP hosts a single registered instance.
+
 ### `GET /api/leaderboard`
 
 Returns top fraggers. Optional query params: `limit`, `level`, `weapon`.

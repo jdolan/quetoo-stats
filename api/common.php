@@ -144,6 +144,14 @@ function query_server_info(string $ip, int $port): ?string {
 
 /**
  * @brief Return the cached map of IP -> sv_hostname, refreshing if stale.
+ *
+ * Stored rows only ever record a server's IP, never its port, so if multiple
+ * registered server instances share an IP on different ports (e.g. separate
+ * DM/CTF instances on one host), there is no way to know which instance a
+ * given historical row actually came from. Rather than guessing (e.g. by
+ * silently keeping whichever instance was queried last), such IPs are left
+ * out of the map entirely, so callers fall back to treating them as
+ * unresolved.
  */
 function get_server_info_map(): array {
   if (file_exists(INFO_CACHE_FILE) && (time() - filemtime(INFO_CACHE_FILE)) < INFO_CACHE_TTL) {
@@ -154,10 +162,19 @@ function get_server_info_map(): array {
   }
 
   $map = [];
+  $counts = [];
   foreach (get_registered_servers() as $s) {
     $hostname = query_server_info($s['ip'], $s['port']);
-    if ($hostname !== null) {
+    if ($hostname === null) {
+      continue;
+    }
+
+    $counts[$s['ip']] = ($counts[$s['ip']] ?? 0) + 1;
+    if ($counts[$s['ip']] === 1) {
       $map[$s['ip']] = $hostname;
+    } else {
+      // Ambiguous: multiple instances share this IP. Leave it unresolved.
+      unset($map[$s['ip']]);
     }
   }
 
@@ -166,13 +183,47 @@ function get_server_info_map(): array {
 }
 
 /**
- * @brief Returns the display hostname for a server IP.
- * Priority: SERVER_HOSTNAMES config override > live status query > IP fallback.
+ * @brief Reads the `X-Quetoo-Port` header sent by newer Quetoo dedicated
+ * servers, identifying which instance (of potentially several sharing a
+ * single public IP) reported this request. Returns null if absent/invalid.
  */
-function server_hostname(string $ip): string {
+function reported_port(): ?int {
+  $value = $_SERVER['HTTP_X_QUETOO_PORT'] ?? null;
+  if ($value === null || !ctype_digit((string) $value)) {
+    return null;
+  }
+  $port = (int) $value;
+  return ($port > 0 && $port <= 65535) ? $port : null;
+}
+
+/**
+ * @brief Reads the `X-Quetoo-Hostname` header sent by newer Quetoo dedicated
+ * servers, i.e. the reporting server's own `sv_hostname` cvar value at the
+ * time of the request. Returns null if absent/empty.
+ */
+function reported_hostname(): ?string {
+  $value = trim((string) ($_SERVER['HTTP_X_QUETOO_HOSTNAME'] ?? ''));
+  return $value !== '' ? substr($value, 0, 255) : null;
+}
+
+/**
+ * @brief Returns the display hostname for a server IP.
+ *
+ * Priority: SERVER_HOSTNAMES config override > self-reported X-Quetoo-Hostname
+ * header (authoritative — the server knows its own hostname/port, so this is
+ * unambiguous even when multiple instances share one IP) > live status query
+ * (best-effort fallback for older clients that don't send the header; skipped
+ * entirely for IPs with multiple registered instances, since it cannot tell
+ * them apart) > IP fallback.
+ */
+function server_hostname(string $ip, ?string $reported_hostname = null): string {
   $overrides = defined('SERVER_HOSTNAMES') ? SERVER_HOSTNAMES : [];
   if (isset($overrides[$ip])) {
     return $overrides[$ip];
+  }
+
+  if ($reported_hostname !== null) {
+    return $reported_hostname;
   }
 
   $map = get_server_info_map();
