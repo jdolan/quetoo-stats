@@ -3,6 +3,11 @@
  * Database configuration.
  * Copy this file to config.local.php and fill in credentials.
  * config.local.php is .gitignored and never committed.
+ *
+ * config.local.php is loaded FIRST, before any defaults below are applied,
+ * so its overrides actually take effect. (define() is first-write-wins in
+ * PHP, so defining a constant here before requiring config.local.php would
+ * silently and permanently lock in the default instead of the override.)
  */
 
 $db_config = [
@@ -13,28 +18,42 @@ $db_config = [
   'pass'   => '',  // set in config.local.php
 ];
 
+if (file_exists(__DIR__ . '/config.local.php')) {
+  require_once __DIR__ . '/config.local.php';
+}
+
 /**
- * Secret salt for HMAC-SHA256 GUID hashing.
- * Override in config.local.php with a random secret.
+ * Secret salt for HMAC-SHA256 GUID hashing. MUST be set in
+ * config.local.php - there is intentionally no working default here.
+ *
+ * Raw player GUIDs are never stored anywhere (see hash_guid() below) -
+ * only their HMAC-SHA256 digest, computed with this salt. If the
+ * effective salt ever changes, hash_guid() output changes for every
+ * player simultaneously, and every existing row in
+ * frags/captures/matches becomes permanently unmatchable to any future
+ * hash, with no raw GUIDs left to recompute against. This is a
+ * whole-database, unrecoverable event - never rotate this value casually.
  */
-define('STATS_SALT', 'SET-THIS-IN-CONFIG-LOCAL-PHP--DO-NOT-USE-THIS-VALUE');
+if (!defined('STATS_SALT')) {
+  fwrite(STDERR, "FATAL: STATS_SALT must be defined in config.local.php\n");
+  http_response_code(500);
+  exit(1);
+}
 
 /**
  * Player names suppressed from the leaderboard.
  * Frags and captures are always stored; suppression is query-time only.
  * Override in config.local.php if needed.
  */
-define('LEADERBOARD_SUPPRESS_NAMES', ['newbie']);
+if (!defined('LEADERBOARD_SUPPRESS_NAMES')) {
+  define('LEADERBOARD_SUPPRESS_NAMES', ['newbie']);
+}
 
 /**
  * Map of server IP -> display hostname.
  * Define in config.local.php, e.g.:
  *   define('SERVER_HOSTNAMES', ['1.2.3.4' => 'myserver.example.com']);
  */
-
-if (file_exists(__DIR__ . '/config.local.php')) {
-  require_once __DIR__ . '/config.local.php';
-}
 
 /**
  * Generate a cryptographically-random UUID v4.
@@ -64,6 +83,8 @@ function db_connect(): PDO {
 
 /**
  * Hash a raw GUID with the server-side salt so raw GUIDs are never stored.
+ * This is a one-way, permanent mapping - there is no stored raw GUID to
+ * fall back on if the salt ever changes. See the STATS_SALT comment above.
  */
 function hash_guid(string $guid): string {
   return hash_hmac('sha256', $guid, STATS_SALT);
