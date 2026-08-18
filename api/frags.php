@@ -104,35 +104,44 @@ try {
 
 echo json_encode(['inserted' => $inserted, 'match_id' => $match_id]);
 
-// Derive per-player time windows from attacker-side frag events and insert into matches.
-// Done outside the main transaction — frags are already committed; a failure
-// here is non-critical and should not roll back the frag data.
-$windows = $pdo->prepare(
-  'SELECT level, player, player_guid, player_ai,
-          MAX(`time`) - MIN(`time`) AS duration
-   FROM frags
-   WHERE match_id = ?
-   GROUP BY player_guid, player, player_ai, level
-   HAVING COUNT(*) >= 2 AND MAX(`time`) > MIN(`time`)'
-);
-$windows->execute([$match_id]);
-$rows = $windows->fetchAll(PDO::FETCH_ASSOC);
-
-if (!empty($rows)) {
-  $match_stmt = $pdo->prepare(
-    'INSERT INTO matches (match_id, server_ip, server_port, server_hostname, level, player, player_guid, player_ai, duration)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+// Derive per-player time windows from attacker- and target-side frag events and
+// insert into matches. Done outside the main transaction — frags are already
+// committed; a failure here is non-critical and should not roll back the frag data.
+try {
+  $windows = $pdo->prepare(
+    'SELECT level, player, player_guid, player_ai,
+            MAX(`time`) - MIN(`time`) AS duration
+     FROM (
+       SELECT level, attacker AS player, attacker_guid AS player_guid, attacker_ai AS player_ai, `time`
+       FROM frags WHERE match_id = ?
+       UNION ALL
+       SELECT level, target, target_guid, target_ai, `time`
+       FROM frags WHERE match_id = ?
+     ) combined
+     GROUP BY player_guid, player, player_ai, level
+     HAVING COUNT(*) >= 2 AND MAX(`time`) > MIN(`time`)'
   );
-  $pdo->beginTransaction();
-  try {
-    foreach ($rows as $row) {
-      $match_stmt->execute([
-        $match_id, $server_ip, $server_port, $server_hostname,
-        $row['level'], $row['player'], $row['player_guid'], $row['player_ai'], $row['duration'],
-      ]);
+  $windows->execute([$match_id, $match_id]);
+  $rows = $windows->fetchAll(PDO::FETCH_ASSOC);
+
+  if (!empty($rows)) {
+    $match_stmt = $pdo->prepare(
+      'INSERT INTO matches (match_id, server_ip, server_port, server_hostname, level, player, player_guid, player_ai, duration)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    );
+    $pdo->beginTransaction();
+    try {
+      foreach ($rows as $row) {
+        $match_stmt->execute([
+          $match_id, $server_ip, $server_port, $server_hostname,
+          $row['level'], $row['player'], $row['player_guid'], $row['player_ai'], $row['duration'],
+        ]);
+      }
+      $pdo->commit();
+    } catch (Exception $e) {
+      $pdo->rollBack();
     }
-    $pdo->commit();
-  } catch (Exception $e) {
-    $pdo->rollBack();
   }
+} catch (Exception $e) {
+  error_log('frags: failed to derive match windows: ' . $e->getMessage());
 }
