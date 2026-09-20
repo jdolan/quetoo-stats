@@ -21,6 +21,7 @@ a fix belongs in one of them, make it there rather than working around it here, 
 | Repository | What it is | Reach for it when |
 |---|---|---|
 | `../quetoo` | The game engine. `src/server/sv_game.c` posts the batches this API ingests, and `src/client/cl_main.c` owns the `guid` cvar that identifies a player | An ingested field changes shape, or you need to know what the server actually sends |
+| `../quetoo` | Also the game client. `src/client/cl_analytics.c` posts `/api/sessions` | A session field changes shape |
 | `../quetoo-www` | The Hugo website. `static/js/stats.js` renders `/stats`, and `static/js/servers.js` renders the server browser | A response field changes, or the pages that consume this API need to change with it |
 
 The engine, this API and the website form one pipeline. A change to what the engine posts, or to
@@ -40,6 +41,44 @@ client UUID is a privacy defect, not a formatting choice.
 orphans every row ever written**, because there is no way to recover a raw GUID and rehash it. That
 is why `maintenance/merge_guid.php` exists, and why an admin has to identify an orphaned player by
 name.
+
+### ANALYTICS_SALT is not STATS_SALT
+
+`api/sessions.php` hashes its client token with `hash_token()` and `ANALYTICS_SALT`, while frags and
+captures use `hash_guid()` and `STATS_SALT`. Both constants are defined in `config.local.php`, and
+setting them to the same value MUST NOT happen.
+
+A shared salt would let a `sessions` row be joined to a `frags` row, and a frag row carries a player
+name. Anonymous analytics would silently become named analytics. Nothing would error, and the
+resulting rows would look correct.
+
+Rotating `ANALYTICS_SALT` orphans every `sessions` row, which is a survivable loss. Rotating
+`STATS_SALT` is not.
+
+### The sessions route stores and logs no address
+
+`api/sessions.php` MUST NOT write `$_SERVER['REMOTE_ADDR']` to any column, and MUST NOT `error_log()`
+its request body the way `api/frags.php` does. The vhosts in `apache/` carry a per-route `CustomLog`
+that strips the client address for `/api/sessions` alone.
+
+All three are load-bearing. An address recorded next to a session token undoes the anonymity the
+daily token exists to provide, and a revert to a plain `combined` `CustomLog` re-enables address
+logging with no error and no warning.
+
+### The sessions route cannot be authenticated
+
+`POST /api/frags` is gated on `is_registered_server()`. `POST /api/sessions` is not, and MUST NOT be:
+a game client is not a master-listed server, and an open-source client cannot hold a secret. Anyone
+can read the URL out of `../quetoo/src/client/cl_analytics.c` and post whatever they like.
+
+The field bounds and the per-address rate limit in the route raise the cost of that. They do not
+prevent it. Session counts are therefore softer evidence than frag counts.
+
+### Sessions have no retention limit and no deletion path
+
+Nothing prunes the `sessions` table today, by decision. There is also no way to serve a deletion
+request from it: the client token rotates every UTC day before it is ever sent, so no stable key
+identifies a person. Do not offer a deletion path that cannot be honoured.
 
 ### Suicides count as deaths, not as kills
 
