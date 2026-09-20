@@ -16,6 +16,8 @@
  *     "port":        1998,
  *     "hostname":    "Quetoo.org Official - US East",
  *     "map":         "dm_quetoo",
+ *     "game":        "default",
+ *     "gameplay":    "deathmatch",
  *     "num_clients": 3,
  *     "max_clients": 16,
  *     "players": [
@@ -103,6 +105,7 @@ function parse_status_response(string $response, string $fallback_ip): ?array {
   $hostname    = $info['sv_hostname']    ?? $fallback_ip;
   $map         = $info['sv_map']         ?? '';
   $gameplay    = $info['g_gameplay']     ?? '';
+  $game        = $info['gameName']       ?? '';
   $num_clients = count($players);
   // servers before v1.0.106 send this key as sv_max_clients
   $max_clients = (int)($info['sv_maxClients'] ?? $info['sv_max_clients'] ?? 0);
@@ -110,6 +113,7 @@ function parse_status_response(string $response, string $fallback_ip): ?array {
   return [
     'hostname'    => $hostname,
     'map'         => $map,
+    'game'        => $game,
     'gameplay'    => $gameplay,
     'num_clients' => $num_clients,
     'bots'        => $bots,
@@ -186,7 +190,7 @@ function query_all_server_statuses(array $servers, int $timeout_ms = 500): array
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Validate sort params.  Whitelist keys to prevent injection.
-$sortable = ['hostname', 'map', 'gameplay', 'num_clients', 'max_clients'];
+$sortable = ['hostname', 'map', 'game', 'gameplay', 'num_clients', 'max_clients'];
 $sort     = in_array($_GET['sort'] ?? '', $sortable, true) ? $_GET['sort'] : 'num_clients';
 $dir      = ($_GET['dir'] ?? 'desc') === 'asc' ? 'asc' : 'desc';
 
