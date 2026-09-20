@@ -16,7 +16,7 @@ DB_USER="quetoo"
 
 # --- Install packages ---
 apt-get update
-apt-get install -y apache2 php libapache2-mod-php php-mysql mariadb-server certbot python3-certbot-apache
+apt-get install -y apache2 php libapache2-mod-php php-mysql php-mbstring mariadb-server certbot python3-certbot-apache
 
 a2enmod rewrite
 systemctl enable --now apache2 mariadb
@@ -39,10 +39,25 @@ echo "Deploying to ${WWW_DIR}..."
 rsync -a --exclude='install.sh' --exclude='.git' --exclude='config.local.php' \
   "${REPO_DIR}/" "${WWW_DIR}/"
 
-cat > "${WWW_DIR}/config.local.php" <<PHP
+# STATS_SALT and ANALYTICS_SALT have no defaults, and config.php exits without
+# them. They must also differ from each other: a shared salt would let a
+# sessions row be joined to a frags row, which carries a player name.
+#
+# NEVER regenerate a salt that is already in use. A new STATS_SALT orphans every
+# frags, captures and matches row permanently, with no raw GUID left to rehash
+# against. So an existing config.local.php is left exactly as it is.
+if [ -e "${WWW_DIR}/config.local.php" ]; then
+  echo "Keeping the existing ${WWW_DIR}/config.local.php."
+  echo "If it predates the analytics endpoint, add ANALYTICS_SALT to it by hand:"
+  echo "  define('ANALYTICS_SALT', '$(openssl rand -hex 32)');"
+else
+  cat > "${WWW_DIR}/config.local.php" <<PHP
 <?php
 \$db_config['pass'] = '${DB_PASS}';
+define('STATS_SALT', '$(openssl rand -hex 32)');
+define('ANALYTICS_SALT', '$(openssl rand -hex 32)');
 PHP
+fi
 
 chown -R www-data:www-data "${WWW_DIR}"
 chmod 640 "${WWW_DIR}/config.local.php"

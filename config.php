@@ -41,6 +41,30 @@ if (!defined('STATS_SALT')) {
 }
 
 /**
+ * Secret salt for HMAC-SHA256 hashing of the client analytics token. MUST be
+ * set in config.local.php - there is intentionally no working default here.
+ *
+ * This MUST NOT be the same value as STATS_SALT. The two salts protect
+ * different populations, and a shared value would let a session row be joined
+ * to a frag row, which carries a player name. That would turn anonymous
+ * analytics into named analytics, silently.
+ *
+ * Rotating this value orphans every sessions row, which is a survivable loss.
+ * Rotating STATS_SALT is not - see its comment above.
+ */
+if (!defined('ANALYTICS_SALT')) {
+  fwrite(STDERR, "FATAL: ANALYTICS_SALT must be defined in config.local.php\n");
+  http_response_code(500);
+  exit(1);
+}
+
+if (ANALYTICS_SALT === STATS_SALT) {
+  fwrite(STDERR, "FATAL: ANALYTICS_SALT must differ from STATS_SALT\n");
+  http_response_code(500);
+  exit(1);
+}
+
+/**
  * Player names suppressed from the leaderboard.
  * Frags and captures are always stored; suppression is query-time only.
  * Override in config.local.php if needed.
@@ -88,6 +112,16 @@ function db_connect(): PDO {
  */
 function hash_guid(string $guid): string {
   return hash_hmac('sha256', $guid, STATS_SALT);
+}
+
+/**
+ * Hash a client analytics token, or a client address, with the analytics salt.
+ * The client already rotates its own token daily, so this second hop is what
+ * stops anyone who knows a player's raw GUID from recomputing that player's
+ * token and finding them in a leaked sessions table.
+ */
+function hash_token(string $token): string {
+  return hash_hmac('sha256', $token, ANALYTICS_SALT);
 }
 
 /**
