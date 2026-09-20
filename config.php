@@ -65,6 +65,18 @@ if (ANALYTICS_SALT === STATS_SALT) {
 }
 
 /**
+ * Time zone the analytics dashboard reports play times in.
+ *
+ * The data itself is UTC. This only decides how the hour-of-day and
+ * day-of-week charts are labelled, and those exist to plan community game
+ * times, so they read in the organiser's local time rather than in UTC.
+ * Override in config.local.php.
+ */
+if (!defined('ANALYTICS_TZ')) {
+  define('ANALYTICS_TZ', 'America/New_York');
+}
+
+/**
  * Player names suppressed from the leaderboard.
  * Frags and captures are always stored; suppression is query-time only.
  * Override in config.local.php if needed.

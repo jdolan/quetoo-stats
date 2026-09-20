@@ -117,6 +117,48 @@ $breakdowns['Memory'] = rows($pdo, "SELECT CASE
                                  GROUP BY value
                                  ORDER BY system_ram_mb IS NULL, sort_key");
 
+/**
+ * Play time by hour of day and by day of week, over the last 30 days.
+ *
+ * Each session is spread across every hour it actually spans, rather than
+ * counted once at the hour it began. A session that starts at 20:00 and runs
+ * three hours is three hours of evening play, and counting only its first hour
+ * would under-report exactly the evening peak this chart exists to find.
+ *
+ * Sessions with no duration are skipped: the client did not report an exit, so
+ * we know when it started but not how long it ran.
+ *
+ * Chunks are cut on UTC hour boundaries, which are also local hour boundaries
+ * for any whole-hour zone. Under a zone offset by thirty or forty-five minutes
+ * a chunk is credited to the local hour it starts in, so attribution smears by
+ * up to one chunk. That is bounded and harmless at this resolution.
+ */
+$spans = rows($pdo, "SELECT UNIX_TIMESTAMP(ts) AS started, duration
+                       FROM sessions
+                      WHERE duration > 0 AND ts > UTC_TIMESTAMP() - INTERVAL 30 DAY");
+
+$byHour = array_fill(0, 24, 0);
+$byDay = array_fill(0, 7, 0);
+$zone = new DateTimeZone(ANALYTICS_TZ);
+
+foreach ($spans as $span) {
+  $at = (int) $span['started'];
+  $remaining = (int) $span['duration'];
+
+  while ($remaining > 0) {
+    $chunk = min($remaining, 3600 - ($at % 3600));
+    $local = (new DateTimeImmutable('@' . $at))->setTimezone($zone);
+    $byHour[(int) $local->format('G')] += $chunk;
+    $byDay[(int) $local->format('w')] += $chunk;
+    $at += $chunk;
+    $remaining -= $chunk;
+  }
+}
+
+$hourPeak = max(1, max($byHour));
+$dayPeak = max(1, max($byDay));
+$dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
 $peak = 0;
 foreach ($daily as $d) {
   $peak = max($peak, (int) $d['players']);
@@ -149,6 +191,11 @@ foreach ($daily as $d) {
   .cols { display:flex; flex-wrap:wrap; gap:0 48px; }
   .cols section { flex:1 1 300px; min-width:300px; }
   footer { color:var(--dim); margin-top:40px; font-size:12px; }
+  .hours { display:flex; align-items:flex-end; gap:3px; height:140px; margin-bottom:4px; }
+  .hour { flex:1; display:flex; flex-direction:column; justify-content:flex-end; height:100%; }
+  .col { height:100%; display:flex; align-items:flex-end; background:#1c1f24; }
+  .fill { width:100%; background:var(--bar); min-height:1px; }
+  .tick { text-align:center; color:var(--dim); font-size:11px; padding-top:4px; }
 </style>
 </head>
 <body>
@@ -189,6 +236,31 @@ foreach ($daily as $d) {
 <?php if (!$daily): ?>
   <tr><td colspan="7">No sessions recorded yet.</td></tr>
 <?php endif; ?>
+</table>
+
+<h2>Play time by hour, last 30 days (<?= h(ANALYTICS_TZ) ?>)</h2>
+<div class="hours">
+<?php for ($hour = 0; $hour < 24; $hour++): ?>
+  <div class="hour" title="<?= h(sprintf('%02d:00', $hour)) ?> &mdash; <?= h(duration($byHour[$hour])) ?>">
+    <div class="col"><div class="fill" style="height:<?= round(100 * $byHour[$hour] / $hourPeak) ?>%"></div></div>
+    <div class="tick"><?= $hour % 3 === 0 ? sprintf('%02d', $hour) : '' ?></div>
+  </div>
+<?php endfor; ?>
+</div>
+<p class="note">
+  Each session counts towards every hour it spanned, not only the hour it began.
+  Sessions that never reported an exit are excluded, because their length is unknown.
+</p>
+
+<h2>Play time by day, last 30 days (<?= h(ANALYTICS_TZ) ?>)</h2>
+<table>
+<?php foreach ([1, 2, 3, 4, 5, 6, 0] as $day): ?>
+  <tr>
+    <td><?= h($dayNames[$day]) ?></td>
+    <td class="n"><?= h(duration($byDay[$day])) ?></td>
+    <td style="width:100%"><span class="bar" style="width:<?= round(240 * $byDay[$day] / $dayPeak) ?>px"></span></td>
+  </tr>
+<?php endforeach; ?>
 </table>
 
 <div class="cols">
