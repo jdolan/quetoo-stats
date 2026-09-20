@@ -4,7 +4,7 @@ REST API and database schema for Quetoo gameplay statistics.
 
 ## Stack
 
-- **Apache** + **mod_php** (PHP 8.1+, with `mbstring`)
+- **Apache** + **mod_php** (PHP 8.1+)
 - **MariaDB** (MySQL-compatible)
 - **Let's Encrypt** for TLS
 

@@ -16,7 +16,7 @@ DB_USER="quetoo"
 
 # --- Install packages ---
 apt-get update
-apt-get install -y apache2 php libapache2-mod-php php-mysql php-mbstring mariadb-server certbot python3-certbot-apache
+apt-get install -y apache2 php libapache2-mod-php php-mysql mariadb-server certbot python3-certbot-apache
 
 a2enmod rewrite
 systemctl enable --now apache2 mariadb

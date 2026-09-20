@@ -80,15 +80,26 @@ function bounded(array $body, string $key, int $min, int $max): ?int {
 }
 
 /**
- * Reads a string field, cut to the column width. mb_substr counts characters,
- * as the utf8mb4 columns do. substr counts bytes, and would slice a multi-byte
- * sequence in half, which MySQL rejects in strict mode.
+ * Reads a string field, cut to the column width. The cut counts characters, as
+ * the utf8mb4 columns do; cutting bytes could slice a multi-byte sequence in
+ * half, which MySQL rejects in strict mode.
+ *
+ * This uses PCRE rather than mb_substr, because mbstring is a separate package
+ * that a PHP install need not have, and its absence is a fatal error rather
+ * than a degraded result. The /u modifier makes `.` match one UTF-8 character.
+ *
+ * It also fails on input that is not valid UTF-8, and that is stored as NULL.
+ * No honest client sends such a field, and passing the bytes through would put
+ * a value in the statement that strict mode rejects, losing the whole record.
  */
 function truncated(array $body, string $key, int $length): ?string {
   if (!isset($body[$key]) || !is_scalar($body[$key])) {
     return null;
   }
-  return mb_substr((string) $body[$key], 0, $length);
+  if (!preg_match('/^.{0,' . $length . '}/us', (string) $body[$key], $match)) {
+    return null;
+  }
+  return $match[0];
 }
 
 /**

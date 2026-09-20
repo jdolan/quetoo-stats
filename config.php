@@ -35,7 +35,7 @@ if (file_exists(__DIR__ . '/config.local.php')) {
  * whole-database, unrecoverable event - never rotate this value casually.
  */
 if (!defined('STATS_SALT')) {
-  fwrite(STDERR, "FATAL: STATS_SALT must be defined in config.local.php\n");
+  error_log("FATAL: STATS_SALT must be defined in config.local.php");
   http_response_code(500);
   exit(1);
 }
@@ -53,13 +53,13 @@ if (!defined('STATS_SALT')) {
  * Rotating STATS_SALT is not - see its comment above.
  */
 if (!defined('ANALYTICS_SALT')) {
-  fwrite(STDERR, "FATAL: ANALYTICS_SALT must be defined in config.local.php\n");
+  error_log("FATAL: ANALYTICS_SALT must be defined in config.local.php");
   http_response_code(500);
   exit(1);
 }
 
 if (ANALYTICS_SALT === STATS_SALT) {
-  fwrite(STDERR, "FATAL: ANALYTICS_SALT must differ from STATS_SALT\n");
+  error_log("FATAL: ANALYTICS_SALT must differ from STATS_SALT");
   http_response_code(500);
   exit(1);
 }
