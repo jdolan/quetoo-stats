@@ -9,7 +9,20 @@ RewriteRule ^api/([a-z_]+)/?$ api/$1.php [L,QSA]
 # Route /deploy -> deploy.php
 RewriteRule ^deploy/?$ deploy.php [L]
 
+# Route /analytics -> analytics.php
+RewriteRule ^analytics/?$ analytics.php [L]
+
 # Block direct access to config files
 <FilesMatch "^config.*\.php$">
   Require all denied
 </FilesMatch>
+
+# The analytics dashboard is the only page here that reads the sessions table,
+# so it is the only one behind a password. AuthUserFile lives outside the
+# document root and is created by install.sh, never committed.
+<Files "analytics.php">
+  AuthType Basic
+  AuthName "Quetoo analytics"
+  AuthUserFile /etc/apache2/quetoo-stats.htpasswd
+  Require valid-user
+</Files>

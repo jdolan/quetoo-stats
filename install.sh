@@ -16,7 +16,7 @@ DB_USER="quetoo"
 
 # --- Install packages ---
 apt-get update
-apt-get install -y apache2 php libapache2-mod-php php-mysql mariadb-server certbot python3-certbot-apache
+apt-get install -y apache2 apache2-utils php libapache2-mod-php php-mysql mariadb-server certbot python3-certbot-apache
 
 a2enmod rewrite
 systemctl enable --now apache2 mariadb
@@ -63,6 +63,17 @@ chown -R www-data:www-data "${WWW_DIR}"
 chmod 640 "${WWW_DIR}/config.local.php"
 
 # --- Apache vhost ---
+# --- Analytics dashboard credentials ---
+# .htaccess protects analytics.php against this file. Apache returns 500 for
+# that page if it is missing, so create it before enabling the site.
+if [ ! -e /etc/apache2/quetoo-stats.htpasswd ]; then
+  ANALYTICS_PASS="$(openssl rand -base64 12)"
+  htpasswd -cbB /etc/apache2/quetoo-stats.htpasswd admin "${ANALYTICS_PASS}"
+  chown root:www-data /etc/apache2/quetoo-stats.htpasswd
+  chmod 640 /etc/apache2/quetoo-stats.htpasswd
+  echo "Analytics dashboard: https://${DOMAIN}/analytics  admin / ${ANALYTICS_PASS}"
+fi
+
 cp "${REPO_DIR}/apache/quetoo-stats.conf" /etc/apache2/sites-available/
 a2ensite quetoo-stats
 a2dissite 000-default || true
