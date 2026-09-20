@@ -49,8 +49,8 @@ captures use `hash_guid()` and `STATS_SALT`. Both constants are defined in `conf
 setting them to the same value MUST NOT happen.
 
 A shared salt would let a `sessions` row be joined to a `frags` row, and a frag row carries a player
-name. Anonymous analytics would silently become named analytics. Nothing would error, and the
-resulting rows would look correct.
+name. Anonymous analytics would silently become named analytics. `config.php` therefore refuses to
+run when the two match, which is the one case here that is *not* silent. Keep that check.
 
 Rotating `ANALYTICS_SALT` orphans every `sessions` row, which is a survivable loss. Rotating
 `STATS_SALT` is not.

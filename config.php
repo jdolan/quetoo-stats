@@ -58,6 +58,12 @@ if (!defined('ANALYTICS_SALT')) {
   exit(1);
 }
 
+if (ANALYTICS_SALT === STATS_SALT) {
+  fwrite(STDERR, "FATAL: ANALYTICS_SALT must differ from STATS_SALT\n");
+  http_response_code(500);
+  exit(1);
+}
+
 /**
  * Player names suppressed from the leaderboard.
  * Frags and captures are always stored; suppression is query-time only.
