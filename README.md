@@ -17,20 +17,22 @@ Accepts a JSON array of frag events from a Quetoo dedicated server.
 ```json
 [
   {
-    "level":        "dm_quetoo",
-    "attacker":     "PlayerA",
-    "attackerGuid": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-    "target":       "PlayerB",
-    "targetGuid":   "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-    "weapon":       "railgun",
-    "mod":          12
+    "level":         "dm_quetoo",
+    "attacker":      "PlayerA",
+    "attacker_guid": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+    "target":        "PlayerB",
+    "target_guid":   "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+    "weapon":        "railgun",
+    "mod":           12
   }
 ]
 ```
 
-The keys are the C struct member names, so Quetoo v1.0.106 renamed them to
-camelCase. Servers before that send `attacker_guid`, `attacker_ai` and the
-rest in snake_case, and both spellings are accepted.
+Quetoo v1.0.106 through v1.0.108 post `attackerGuid`, `attackerAi`,
+`targetGuid` and `targetAi` instead, because those builds took the JSON key
+from the C struct member name and that name had been renamed to camelCase.
+Both spellings are accepted, and the camelCase one MUST keep working until no
+server in the field runs a build from that window.
 
 Newer Quetoo dedicated servers also send two headers alongside this (and the
 `/api/captures`) request, identifying which server instance is reporting:
