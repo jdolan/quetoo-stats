@@ -104,7 +104,8 @@ function parse_status_response(string $response, string $fallback_ip): ?array {
   $map         = $info['sv_map']         ?? '';
   $gameplay    = $info['g_gameplay']     ?? '';
   $num_clients = count($players);
-  $max_clients = (int)($info['sv_max_clients'] ?? 0);
+  // servers before v1.0.106 send this key as sv_max_clients
+  $max_clients = (int)($info['sv_maxClients'] ?? $info['sv_max_clients'] ?? 0);
 
   return [
     'hostname'    => $hostname,
