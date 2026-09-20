@@ -65,6 +65,8 @@ $inserted  = 0;
 
 try {
   foreach ($captures as $c) {
+    $c = normalize_event_keys($c);
+
     if (!isset($c['level'], $c['player'], $c['player_guid'])) {
       continue;
     }

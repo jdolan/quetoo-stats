@@ -70,6 +70,8 @@ $inserted = 0;
 
 try {
   foreach ($frags as $f) {
+    $f = normalize_event_keys($f);
+
     if (!isset($f['level'], $f['attacker'], $f['attacker_guid'],
                  $f['target'], $f['target_guid'], $f['mod'])) {
       continue;

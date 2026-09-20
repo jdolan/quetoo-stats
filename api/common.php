@@ -229,3 +229,20 @@ function server_hostname(string $ip, ?string $reported_hostname = null): string 
   $map = get_server_info_map();
   return $map[$ip] ?? $ip;
 }
+
+/**
+ * @brief Rewrites camelCase keys in a posted event to the snake_case names the
+ * columns use.
+ *
+ * The keys a Quetoo server posts are the C struct member names, so Quetoo
+ * v1.0.106 renaming `GameFrag::attacker_guid` to `attackerGuid` renamed the
+ * JSON key with it. Older servers still send the snake_case spelling, and
+ * both have to work.
+ */
+function normalize_event_keys(array $event): array {
+  $normalized = [];
+  foreach ($event as $key => $value) {
+    $normalized[strtolower(preg_replace('/(?<!^)[A-Z]/', '_$0', $key))] = $value;
+  }
+  return $normalized;
+}

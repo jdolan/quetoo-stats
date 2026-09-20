@@ -17,16 +17,20 @@ Accepts a JSON array of frag events from a Quetoo dedicated server.
 ```json
 [
   {
-    "level":         "dm_quetoo",
-    "attacker":      "PlayerA",
-    "attacker_guid": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-    "target":        "PlayerB",
-    "target_guid":   "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-    "weapon":        "railgun",
-    "mod":           12
+    "level":        "dm_quetoo",
+    "attacker":     "PlayerA",
+    "attackerGuid": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+    "target":       "PlayerB",
+    "targetGuid":   "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+    "weapon":       "railgun",
+    "mod":          12
   }
 ]
 ```
+
+The keys are the C struct member names, so Quetoo v1.0.106 renamed them to
+camelCase. Servers before that send `attacker_guid`, `attacker_ai` and the
+rest in snake_case, and both spellings are accepted.
 
 Newer Quetoo dedicated servers also send two headers alongside this (and the
 `/api/captures`) request, identifying which server instance is reporting:
@@ -43,9 +47,27 @@ alone cannot express. Older clients that omit these headers still work; the
 service falls back to a live UDP status query keyed by IP alone, which is
 only reliable when a given IP hosts a single registered instance.
 
-### `GET /api/leaderboard`
+### `GET /api/stats`
 
-Returns top fraggers. Optional query params: `limit`, `level`, `weapon`.
+Returns the leaderboard: frags grouped by player, ordered by frags descending.
+
+### `GET /api/stats/<guid>`
+
+Returns one player's kills and deaths, broken down by weapon and by opponent.
+`<guid>` is the hashed form, since raw GUIDs are never stored.
+
+### `POST /api/captures`
+
+Accepts a JSON array of CTF capture events, in the same shape as frags.
+Captures are read back through `/api/stats`, not through this route.
+
+### `GET /api/options`
+
+Returns the distinct server hostnames and map names present in the data, for
+the filter dropdowns on the stats page.
+
+Each endpoint file carries its own parameter list in a docblock at the top.
+Read `api/stats.php` rather than duplicating it here.
 
 ## Setup
 
