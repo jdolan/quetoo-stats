@@ -42,7 +42,6 @@ if (!is_registered_server($_SERVER['REMOTE_ADDR'])) {
 }
 
 $body = file_get_contents('php://input');
-error_log('frags payload: ' . $body);
 $frags = json_decode($body, true);
 
 if (!is_array($frags) || empty($frags)) {

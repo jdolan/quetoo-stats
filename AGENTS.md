@@ -37,6 +37,10 @@ These produce no error. They are the reason this file exists.
 every filter parameter uses the 64-character hex digest. A code path that writes or returns a raw
 client UUID is a privacy defect, not a formatting choice.
 
+A request body MUST NOT be written to the log either. `api/frags.php` used to `error_log()` its
+whole payload, which put raw GUIDs on disk in plain text on every POST and defeated the hashing two
+lines below it. Log a count or an identifier, never the body.
+
 `STATS_SALT` has no default on purpose, and the process exits if it is undefined. **Changing it
 orphans every row ever written**, because there is no way to recover a raw GUID and rehash it. That
 is why `maintenance/merge_guid.php` exists, and why an admin has to identify an orphaned player by
