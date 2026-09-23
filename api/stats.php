@@ -272,12 +272,12 @@ function global_leaderboard(PDO $pdo, array $get): void {
   $dir  = isset($get['dir'])  && $get['dir'] === 'asc' ? 'ASC' : 'DESC';
 
   $order_expr = match($sort) {
-    'deaths'     => "deaths $dir, guid $dir",
-    'kd'         => "CASE WHEN deaths = 0 THEN frags ELSE frags / deaths END $dir, guid $dir",
-    'captures'   => "captures $dir, guid $dir",
-    'time_played'=> "time_played $dir, guid $dir",
-    'name'       => "name $dir, guid $dir",
-    default      => "frags $dir, guid $dir",
+    'deaths'     => "deaths $dir, rank ASC",
+    'kd'         => "CASE WHEN deaths = 0 THEN frags ELSE frags / deaths END $dir, rank ASC",
+    'captures'   => "captures $dir, rank ASC",
+    'time_played'=> "time_played $dir, rank ASC",
+    'name'       => "name $dir, rank ASC",
+    default      => 'rank ' . ($dir === 'ASC' ? 'DESC' : 'ASC'),
   };
 
   // Single unified query: kills LEFT JOIN deaths LEFT JOIN captures LEFT JOIN frag-derived time.
