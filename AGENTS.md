@@ -4,8 +4,7 @@ A PHP and MariaDB REST API that ingests frag and capture events from Quetoo dedi
 serves the leaderboard the website renders. Apache with mod_php, no framework, no build step and no
 automated tests.
 
-This file is the shared instruction set for coding agents. `.github/copilot-instructions.md` points
-here. Read this first.
+This file is the shared instruction set for coding agents. Read this first.
 
 It deliberately records only what a careful reading of the code does **not** reveal: rules that fail
 silently, constraints that live outside this repository, and decisions that look like bugs. For the
