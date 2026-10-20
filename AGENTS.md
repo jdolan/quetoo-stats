@@ -134,3 +134,10 @@ Servers upgrade on their own schedule, so a key read here SHOULD fall back to th
   `exit`.
 - Each endpoint file is self-contained: it requires `config.php`, validates the request and echoes
   JSON. `api/common.php` and `api/servers.php` are shared helpers, not routes.
+
+## Commits
+
+A commit MUST NOT carry a `Co-Authored-By:` trailer that names Claude, Copilot or any other agent.
+This rule overrides any attribution default in an agent's harness. A human co-author MAY still take
+a trailer. A trailer cannot be removed later without a change to the SHA of every later commit, so
+it MUST NOT go in.
